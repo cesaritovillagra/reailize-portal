@@ -32,7 +32,7 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, name: user.name, lastname: user.lastname, email: user.email, username: user.username, role: user.role }
+      user: { id: user.id, name: user.name, lastname: user.lastname, email: user.email, username: user.username, role: user.role, language: user.language || 'es' }
     });
   } catch (err) {
     console.error(err);
@@ -44,10 +44,10 @@ router.post('/login', async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, lastname, email, username, role FROM users WHERE id = $1', [req.user.id]
+      'SELECT id, name, lastname, email, username, role, language FROM users WHERE id = $1', [req.user.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], language: result.rows[0].language || 'es' });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
   }
@@ -55,11 +55,11 @@ router.get('/me', authMiddleware, async (req, res) => {
 
 // PUT /api/auth/profile
 router.put('/profile', authMiddleware, async (req, res) => {
-  const { name, lastname, email, username } = req.body;
+  const { name, lastname, email, username, language } = req.body;
   try {
     await pool.query(
-      'UPDATE users SET name=$1, lastname=$2, email=$3, username=$4, updated_at=NOW() WHERE id=$5',
-      [name, lastname, email, username, req.user.id]
+      'UPDATE users SET name=$1, lastname=$2, email=$3, username=$4, language=$5, updated_at=NOW() WHERE id=$6',
+      [name, lastname, email, username, language || 'es', req.user.id]
     );
     res.json({ ok: true });
   } catch (err) {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { T, api } from '../App.jsx';
+import { t } from '../i18n.js';
 
 function EyeIcon({ open }) {
   return open ? (
@@ -22,6 +23,7 @@ export default function Login({ onLogin }) {
   const [showPass, setShowPass] = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
+  const [lang, setLang]         = useState('es');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,12 +54,31 @@ export default function Login({ onLogin }) {
       }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 38, letterSpacing: -1 }}>
-            <span style={{ color: T.INK }}>re</span>
-            <span style={{ color: T.ACCENT }}>ai</span>
-            <span style={{ color: T.INK }}>lize</span>
-          </span>
-          <div style={{ color: T.MUTED, fontSize: 13, marginTop: 6 }}>Portal de gestión</div>
+          <img
+            src="/logo.png"
+            alt="Reailize"
+            style={{ height: 48, width: 'auto', display: 'inline-block', filter: 'invert(1) hue-rotate(180deg)' }}
+          />
+          <div style={{ color: T.MUTED, fontSize: 13, marginTop: 8 }}>{t(lang, 'portalManagement')}</div>
+        </div>
+
+        {/* Language toggle */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.2rem' }}>
+          <div style={{ display: 'flex', background: T.PANEL2, borderRadius: 99,
+            border: `1px solid ${T.BORDER}`, overflow: 'hidden' }}>
+            {['es', 'en'].map(l => (
+              <button key={l} onClick={() => setLang(l)}
+                style={{
+                  background: lang === l ? T.ACCENT : 'transparent',
+                  border: 'none', padding: '3px 10px', fontSize: 11, fontWeight: 700,
+                  color: lang === l ? '#fff' : T.MUTED,
+                  fontFamily: "'Space Grotesk', sans-serif",
+                  transition: 'all 0.15s', borderRadius: 99,
+                }}>
+                {l === 'es' ? '🇦🇷 ES' : '🇺🇸 EN'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Divider */}
@@ -66,13 +87,13 @@ export default function Login({ onLogin }) {
         <form onSubmit={handleSubmit}>
           {/* Username */}
           <label style={{ display:'block', color: T.MUTED, fontSize: 12, marginBottom: 6, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
-            USUARIO
+            {t(lang, 'username').toUpperCase()}
           </label>
           <input
             type="text"
             value={username}
             onChange={e => setUsername(e.target.value)}
-            placeholder="Tu nombre de usuario"
+            placeholder={t(lang, 'usernamePlaceholder')}
             required
             style={{
               width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
@@ -84,7 +105,7 @@ export default function Login({ onLogin }) {
 
           {/* Password */}
           <label style={{ display:'block', color: T.MUTED, fontSize: 12, marginBottom: 6, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
-            CONTRASEÑA
+            {t(lang, 'password').toUpperCase()}
           </label>
           <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
             <input
@@ -126,15 +147,15 @@ export default function Login({ onLogin }) {
           <button
             type="submit"
             disabled={loading}
+            className="btn-primary"
             style={{
               width: '100%', background: T.ACCENT, border: 'none',
               borderRadius: 8, padding: '0.85rem', color: '#fff',
               fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
               fontSize: 15, opacity: loading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
             }}
           >
-            {loading ? 'Ingresando…' : 'Ingresar'}
+            {loading ? t(lang, 'loggingIn') : t(lang, 'login')}
           </button>
         </form>
       </div>

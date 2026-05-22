@@ -46,13 +46,29 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE /api/projects/:id (archive)
+// DELETE /api/projects/:id (archive — soft delete)
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     await pool.query(
       'UPDATE projects SET archived=true, updated_at=NOW() WHERE id=$1 AND user_id=$2',
       [req.params.id, req.user.id]
     );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// DELETE /api/projects/:id/hard (hard delete — cascades tickets, qbr_configs, qbr_reports)
+router.delete('/:id/hard', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM projects WHERE id=$1 AND user_id=$2 RETURNING id',
+      [req.params.id, req.user.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });

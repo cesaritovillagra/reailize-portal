@@ -37,14 +37,17 @@ IMPORTANT RULES:
 Respond ONLY with a valid JSON object with all the fields above. No markdown, no explanation.
 `;
 
-async function autoCompleteTicket(rawInput) {
+async function autoCompleteTicket(rawInput, lang) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const langInstruction = lang === 'en'
+    ? '\n\nIMPORTANT: All text fields in the JSON output (description, current_situation, impact, value_added, next_steps, governance, strategic_relevance, key_technical_insight) MUST be written in English. If the input is in Spanish or any other language, translate everything to English.'
+    : '';
   const message = await client.messages.create({
     model: 'claude-opus-4-6',
     max_tokens: 2000,
     messages: [{
       role: 'user',
-      content: `${QBR_METHODOLOGY}\n\nHere is the partial ticket information:\n\n${rawInput}\n\nReturn the completed ticket as JSON.`
+      content: `${QBR_METHODOLOGY}${langInstruction}\n\nHere is the partial ticket information:\n\n${rawInput}\n\nReturn the completed ticket as JSON.`
     }]
   });
   const text = message.content[0].text;
@@ -84,10 +87,10 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // POST /api/tickets/preview — auto-complete via Claude (no save)
 router.post('/preview', authMiddleware, async (req, res) => {
-  const { raw_input } = req.body;
+  const { raw_input, lang } = req.body;
   if (!raw_input) return res.status(400).json({ error: 'Ingresá información del ticket' });
   try {
-    const completed = await autoCompleteTicket(raw_input);
+    const completed = await autoCompleteTicket(raw_input, lang || 'es');
     res.json(completed);
   } catch (err) {
     console.error(err);

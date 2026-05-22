@@ -1,4 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { t } from './i18n.js';
+export { t };
+export const LangContext = createContext('es');
+export function useLang() { return useContext(LangContext); }
 import Login        from './components/Login.jsx';
 import Sidebar      from './components/Sidebar.jsx';
 import DataIngestion from './components/sections/DataIngestion.jsx';
@@ -6,6 +10,7 @@ import QBRConfig    from './components/sections/QBRConfig.jsx';
 import QBRGenerator from './components/sections/QBRGenerator.jsx';
 import UserProfile  from './components/sections/UserProfile.jsx';
 import UserAdmin    from './components/sections/UserAdmin.jsx';
+import Projects     from './components/sections/Projects.jsx';
 
 // ── Design tokens ──────────────────────────────────────────
 export const T = {
@@ -93,28 +98,41 @@ export async function apiBlob(path, options = {}) {
 export default function App() {
   const [user, setUser]         = useState(null);
   const [loading, setLoading]   = useState(true);
-  const [section, setSection]   = useState('data');
+  const [section, setSection]   = useState('projects');
   const [project, setProject]   = useState(null);
+  const [lang, setLang]         = useState('es');
 
   // Restore session on load
   useEffect(() => {
     const token = localStorage.getItem('rz_token');
     if (!token) { setLoading(false); return; }
     api('/auth/me')
-      .then(u => { setUser(u); setLoading(false); })
+      .then(u => { setUser(u); setLang(u.language || 'es'); setLoading(false); })
       .catch(() => { localStorage.removeItem('rz_token'); setLoading(false); });
   }, []);
 
   const handleLogin = useCallback((userData, token) => {
     localStorage.setItem('rz_token', token);
     setUser(userData);
+    setLang(userData.language || 'es');
   }, []);
+
+  const handleLangChange = useCallback(async (newLang) => {
+    setLang(newLang);
+    setUser(prev => ({ ...prev, language: newLang }));
+    try {
+      await api('/auth/profile', {
+        method: 'PUT',
+        body: { ...user, language: newLang }
+      });
+    } catch {}
+  }, [user]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('rz_token');
     setUser(null);
     setProject(null);
-    setSection('data');
+    setSection('projects');
   }, []);
 
   if (loading) {
@@ -137,17 +155,18 @@ export default function App() {
 
   const renderSection = () => {
     switch (section) {
-      case 'data':    return <DataIngestion user={user} project={project} />;
-      case 'qbrconf': return <QBRConfig     user={user} project={project} />;
-      case 'qbrgen':  return <QBRGenerator  user={user} project={project} />;
-      case 'profile': return <UserProfile   user={user} onUpdate={setUser} onLogout={handleLogout} />;
-      case 'admin':   return <UserAdmin     user={user} />;
-      default:        return <DataIngestion user={user} project={project} />;
+      case 'projects': return <Projects      user={user} project={project} setProject={setProject} lang={lang} />;
+      case 'data':     return <DataIngestion user={user} project={project} lang={lang} />;
+      case 'qbrconf':  return <QBRConfig     user={user} project={project} lang={lang} />;
+      case 'qbrgen':   return <QBRGenerator  user={user} project={project} lang={lang} />;
+      case 'profile':  return <UserProfile   user={user} onUpdate={u => { setUser(u); setLang(u.language || 'es'); }} onLogout={handleLogout} lang={lang} />;
+      case 'admin':    return <UserAdmin     user={user} lang={lang} />;
+      default:         return <Projects      user={user} project={project} setProject={setProject} lang={lang} />;
     }
   };
 
   return (
-    <>
+    <LangContext.Provider value={lang}>
       <CustomCursor />
       <div style={{ display:'flex', height:'100vh', background: T.BG, overflow:'hidden' }}>
         <Sidebar
@@ -157,6 +176,8 @@ export default function App() {
           project={project}
           setProject={setProject}
           onLogout={handleLogout}
+          lang={lang}
+          onLangChange={handleLangChange}
         />
         <main style={{
           flex: 1, overflowY: 'auto', padding: '2rem',
@@ -165,6 +186,6 @@ export default function App() {
           {renderSection()}
         </main>
       </div>
-    </>
+    </LangContext.Provider>
   );
 }

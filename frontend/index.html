@@ -21,6 +21,43 @@
       ::-webkit-scrollbar-track { background: #13131a; }
       ::-webkit-scrollbar-thumb { background: #2a2a38; border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: #F40085; }
+
+      /* ── Hover interactivo global ─────────────────────────── */
+
+      /* Botón primario (fondo rosa) */
+      .btn-primary { transition: opacity 0.15s, transform 0.1s !important; }
+      .btn-primary:hover:not(:disabled) { opacity: 0.85 !important; transform: translateY(-1px) !important; }
+      .btn-primary:active:not(:disabled) { transform: translateY(0) !important; }
+
+      /* Botón secundario (borde + fondo transparente) */
+      .btn-secondary { transition: background 0.15s, border-color 0.15s, color 0.15s !important; }
+      .btn-secondary:hover:not(:disabled) { background: rgba(240,240,245,0.06) !important; border-color: rgba(240,240,245,0.25) !important; }
+
+      /* Botón peligro (rojo) */
+      .btn-danger { transition: background 0.15s, border-color 0.15s !important; }
+      .btn-danger:hover:not(:disabled) { background: rgba(255,68,68,0.12) !important; border-color: rgba(255,68,68,0.7) !important; }
+
+      /* Botón fantasma / acento outline */
+      .btn-accent-outline { transition: background 0.15s, color 0.15s !important; }
+      .btn-accent-outline:hover:not(:disabled) { background: rgba(244,0,133,0.12) !important; }
+
+      /* Tarjeta de ticket */
+      .ticket-card { transition: border-color 0.15s, box-shadow 0.15s !important; }
+      .ticket-card:hover { border-color: rgba(244,0,133,0.35) !important; box-shadow: 0 4px 20px rgba(244,0,133,0.08) !important; }
+
+      /* Fila de tabla */
+      .table-row { transition: background 0.12s !important; }
+      .table-row:hover { background: rgba(244,0,133,0.05) !important; }
+
+      /* Tab de navegación horizontal */
+      .nav-tab { transition: color 0.15s !important; }
+      .nav-tab:hover { color: rgba(240,240,245,0.9) !important; }
+
+      /* Botón pequeño de acción (Editar / Borrar en tabla) */
+      .btn-row-action { transition: background 0.12s, border-color 0.12s !important; }
+      .btn-row-action:hover { background: rgba(240,240,245,0.08) !important; border-color: rgba(240,240,245,0.3) !important; }
+      .btn-row-danger { transition: background 0.12s, border-color 0.12s !important; }
+      .btn-row-danger:hover { background: rgba(255,68,68,0.12) !important; border-color: rgba(255,68,68,0.5) !important; }
     </style>
   </head>
   <body>

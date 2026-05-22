@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { T, api } from '../../App.jsx';
+import { t } from '../../i18n.js';
 
 const STATUSES      = ['Open', 'In Progress', 'Closed'];
 const PROBLEM_TYPES = ['application','infrastructure','observability','configuration','replication','failover','working_as_designed','transient'];
@@ -23,10 +24,10 @@ function Badge({ label, color }) {
   );
 }
 
-function TicketCard({ ticket, onEdit, onDelete }) {
+function TicketCard({ ticket, onEdit, onDelete, lang }) {
   const statusColor = ticket.status === 'Closed' ? T.SUCCESS : ticket.status === 'In Progress' ? T.WARN : T.CYAN;
   return (
-    <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 12, padding: '1.2rem', marginBottom: 12 }}>
+    <div className="ticket-card" style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 12, padding: '1.2rem', marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div>
           <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.ACCENT, fontSize: 13 }}>
@@ -38,12 +39,12 @@ function TicketCard({ ticket, onEdit, onDelete }) {
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <Badge label={ticket.status} color={statusColor} />
-          <button onClick={() => onEdit(ticket)}
+          <button onClick={() => onEdit(ticket)} className="btn-row-action"
             style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
-              color: T.MUTED, padding: '3px 10px', fontSize: 12 }}>Editar</button>
-          <button onClick={() => onDelete(ticket.id)}
+              color: T.MUTED, padding: '3px 10px', fontSize: 12 }}>{t(lang, 'edit')}</button>
+          <button onClick={() => onDelete(ticket.id)} className="btn-row-danger"
             style={{ background: 'none', border: `1px solid ${T.DANGER}22`, borderRadius: 6,
-              color: T.DANGER, padding: '3px 10px', fontSize: 12 }}>Borrar</button>
+              color: T.DANGER, padding: '3px 10px', fontSize: 12 }}>{t(lang, 'delete')}</button>
         </div>
       </div>
       <div style={{ color: T.INK, fontSize: 13, marginBottom: 6, lineHeight: 1.5 }}>
@@ -63,7 +64,7 @@ function TicketCard({ ticket, onEdit, onDelete }) {
   );
 }
 
-export default function DataIngestion({ user, project }) {
+export default function DataIngestion({ user, project, lang }) {
   const [tickets, setTickets]     = useState([]);
   const [loading, setLoading]     = useState(false);
   const [rawInput, setRawInput]   = useState('');
@@ -87,7 +88,7 @@ export default function DataIngestion({ user, project }) {
     if (!rawInput.trim()) return;
     setProcessing(true); setError('');
     try {
-      const result = await api('/tickets/preview', { method: 'POST', body: { raw_input: rawInput } });
+      const result = await api('/tickets/preview', { method: 'POST', body: { raw_input: rawInput, lang } });
       setPreview({ ...result, raw_input: rawInput });
     } catch (err) {
       setError(err.message);
@@ -111,7 +112,7 @@ export default function DataIngestion({ user, project }) {
   };
 
   const deleteTicket = async (id) => {
-    if (!confirm('¿Borrar este ticket?')) return;
+    if (!confirm(t(lang, 'deleteConfirm'))) return;
     try {
       await api(`/tickets/${id}`, { method: 'DELETE' });
       setTickets(prev => prev.filter(t => t.id !== id));
@@ -122,7 +123,7 @@ export default function DataIngestion({ user, project }) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.name.endsWith('.mpp')) {
-      setError('Los archivos .mpp no son compatibles. Por favor exportá tu proyecto desde Microsoft Project en formato Excel (.xlsx), XML (.xml) o CSV (.csv) y volvé a subirlo.\n\n¿Cómo exportar desde MS Project?\n1. Abrí tu archivo en Microsoft Project\n2. Hacé clic en Archivo → Guardar como\n3. En "Tipo de archivo" elegí Excel (.xlsx) o CSV\n4. Hacé clic en Guardar');
+      setError(t(lang, 'mppError'));
       return;
     }
     const text = await file.text();
@@ -135,7 +136,7 @@ export default function DataIngestion({ user, project }) {
       <div className="fadeUp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
         <div style={{ textAlign: 'center', color: T.MUTED }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
-          <div style={{ fontSize: 16 }}>Seleccioná o creá un proyecto en el sidebar para comenzar</div>
+          <div style={{ fontSize: 16 }}>{t(lang, 'selectProjectFirst')}</div>
         </div>
       </div>
     );
@@ -146,16 +147,16 @@ export default function DataIngestion({ user, project }) {
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: T.INK, marginBottom: 4 }}>
-          Ingesta de Datos
+          {t(lang, 'dataIngestionTitle')}
         </h1>
-        <div style={{ color: T.MUTED, fontSize: 13 }}>Proyecto: <span style={{ color: T.ACCENT }}>{project.name}</span></div>
+        <div style={{ color: T.MUTED, fontSize: 13 }}>{t(lang, 'project')}: <span style={{ color: T.ACCENT }}>{project.name}</span></div>
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', borderBottom: `1px solid ${T.BORDER}`, paddingBottom: 0 }}>
-        {[['list','📋 Tickets'], ['new','➕ Nuevo ticket']].map(([key, label]) => (
-          <div key={key} onClick={() => setTab(key)} style={{
-            padding: '0.6rem 1.2rem', cursor: 'pointer', fontSize: 14,
+        {[['list', t(lang, 'tickets')], ['new', t(lang, 'newTicket')]].map(([key, label]) => (
+          <div key={key} onClick={() => setTab(key)} className="nav-tab" style={{
+            padding: '0.6rem 1.2rem', fontSize: 14,
             fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
             color: tab === key ? T.ACCENT : T.MUTED,
             borderBottom: tab === key ? `2px solid ${T.ACCENT}` : '2px solid transparent',
@@ -178,16 +179,16 @@ export default function DataIngestion({ user, project }) {
       {tab === 'list' && (
         <div>
           {loading ? (
-            <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem' }}>Cargando tickets…</div>
+            <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem' }}>{t(lang, 'loadingTickets')}</div>
           ) : tickets.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: T.MUTED }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
-              <div>No hay tickets en este proyecto todavía.</div>
-              <div style={{ marginTop: 8, fontSize: 13 }}>Hacé clic en "Nuevo ticket" para agregar uno.</div>
+              <div>{t(lang, 'noTickets')}</div>
+              <div style={{ marginTop: 8, fontSize: 13 }}>{t(lang, 'noTicketsHint')}</div>
             </div>
           ) : (
-            tickets.map(t => (
-              <TicketCard key={t.id} ticket={t} onEdit={setEditTicket} onDelete={deleteTicket} />
+            tickets.map(tk => (
+              <TicketCard key={tk.id} ticket={tk} onEdit={setEditTicket} onDelete={deleteTicket} lang={lang} />
             ))
           )}
         </div>
@@ -197,17 +198,16 @@ export default function DataIngestion({ user, project }) {
       {tab === 'new' && !preview && (
         <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem' }}>
           <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, marginBottom: 6, fontSize: 16 }}>
-            Ingresá la información del ticket
+            {t(lang, 'enterTicketInfo')}
           </h3>
           <p style={{ color: T.MUTED, fontSize: 13, marginBottom: '1rem', lineHeight: 1.6 }}>
-            Podés pegar texto libre, datos parciales de JIRA, notas de reunión o cualquier información relevante.
-            Claude va a completar automáticamente todos los campos.
+            {t(lang, 'ticketDesc')}
           </p>
 
           <textarea
             value={rawInput}
             onChange={e => setRawInput(e.target.value)}
-            placeholder="Ejemplo: CreateSMPolicy devuelve 503 desde CHF. El team encontró que el path 58 falla pero el 59 funciona..."
+            placeholder={t(lang, 'ticketPlaceholder')}
             style={{
               width: '100%', minHeight: 160, background: T.PANEL2, border: `1px solid ${T.BORDER}`,
               borderRadius: 8, padding: '0.8rem 1rem', color: T.INK, fontSize: 14,
@@ -217,24 +217,24 @@ export default function DataIngestion({ user, project }) {
           />
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={processInput} disabled={processing || !rawInput.trim()}
+            <button onClick={processInput} disabled={processing || !rawInput.trim()} className="btn-primary"
               style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem',
                 color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
                 fontSize: 14, opacity: processing ? 0.7 : 1 }}>
-              {processing ? '⏳ Procesando con Claude…' : '✨ Completar con Claude'}
+              {processing ? t(lang, 'processing') : t(lang, 'processWithClaude')}
             </button>
 
             <span style={{ color: T.MUTED, fontSize: 13 }}>o</span>
 
-            <button onClick={() => fileRef.current.click()}
+            <button onClick={() => fileRef.current.click()} className="btn-secondary"
               style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8,
                 padding: '0.7rem 1.2rem', color: T.INK, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14 }}>
-              📎 Subir archivo
+              {t(lang, 'uploadFile')}
             </button>
             <input ref={fileRef} type="file"
               accept=".txt,.csv,.xlsx,.xls,.xml,.docx,.doc"
               style={{ display: 'none' }} onChange={handleFile} />
-            <span style={{ color: T.MUTED, fontSize: 11 }}>TXT, CSV, Excel, XML, Word</span>
+            <span style={{ color: T.MUTED, fontSize: 11 }}>{t(lang, 'fileTypes')}</span>
           </div>
         </div>
       )}
@@ -244,12 +244,12 @@ export default function DataIngestion({ user, project }) {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 16 }}>
-              ✅ Revisá y confirmá el ticket generado
+              {t(lang, 'reviewTicket')}
             </h3>
-            <button onClick={() => setPreview(null)}
+            <button onClick={() => setPreview(null)} className="btn-secondary"
               style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
                 color: T.MUTED, padding: '0.4rem 0.9rem', fontSize: 13 }}>
-              ← Volver
+              {t(lang, 'back')}
             </button>
           </div>
 
@@ -258,9 +258,9 @@ export default function DataIngestion({ user, project }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: '1rem' }}>
               {[
                 { key: 'jira_id', label: 'JIRA ID' },
-                { key: 'date_created', label: 'Fecha creación' },
-                { key: 'category', label: 'Categoría' },
-                { key: 'environment', label: 'Entorno' },
+                { key: 'date_created', label: t(lang, 'dateCreated') },
+                { key: 'category', label: t(lang, 'category') },
+                { key: 'environment', label: t(lang, 'environment') },
               ].map(f => (
                 <div key={f.key}>
                   <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
@@ -284,11 +284,11 @@ export default function DataIngestion({ user, project }) {
               </div>
               <div>
                 <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
-                  fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>TIPO DE PROBLEMA</label>
+                  fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>{t(lang, 'problemTypeLabel').toUpperCase()}</label>
                 <select value={preview.problem_type || ''} onChange={e => setPreview(p => ({ ...p, problem_type: e.target.value }))}
                   style={{ width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
                     borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13, outline: 'none' }}>
-                  <option value="">Seleccionar…</option>
+                  <option value="">{t(lang, 'selectOption')}</option>
                   {PROBLEM_TYPES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
@@ -309,16 +309,16 @@ export default function DataIngestion({ user, project }) {
             ))}
 
             <div style={{ display: 'flex', gap: 10, marginTop: '1rem' }}>
-              <button onClick={saveTicket} disabled={saving}
+              <button onClick={saveTicket} disabled={saving} className="btn-primary"
                 style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.7rem 1.8rem',
                   color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
                   fontSize: 14, opacity: saving ? 0.7 : 1 }}>
-                {saving ? 'Guardando…' : '💾 Guardar ticket'}
+                {saving ? t(lang, 'saving') : t(lang, 'saveTicket')}
               </button>
-              <button onClick={() => { setPreview(null); setRawInput(''); }}
+              <button onClick={() => { setPreview(null); setRawInput(''); }} className="btn-secondary"
                 style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
                   padding: '0.7rem 1.2rem', color: T.MUTED, fontSize: 14 }}>
-                Cancelar
+                {t(lang, 'cancel')}
               </button>
             </div>
           </div>

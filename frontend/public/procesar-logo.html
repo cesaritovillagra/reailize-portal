@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Procesar Logo Reailize</title>
+  <style>
+    body { background: #111; color: white; font-family: Arial, sans-serif;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh; gap: 20px; }
+    canvas { border: 1px solid #333; border-radius: 8px; }
+    button { background: #F40085; color: white; border: none; padding: 12px 28px;
+      border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    p { color: #aaa; font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h2>Procesador de Logo Reailize</h2>
+  <p>Cargando logo original y convirtiendo texto oscuro a blanco...</p>
+  <canvas id="canvas"></canvas>
+  <button id="btn" style="display:none">⬇️ Descargar logo-white.png</button>
+  <p id="status">Procesando...</p>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    img.onload = function() {
+      canvas.width  = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const px = data.data;
+
+      for (let i = 0; i < px.length; i += 4) {
+        const r = px[i], g = px[i+1], b = px[i+2], a = px[i+3];
+        if (a < 30) continue; // skip transparent
+
+        // Detect if pixel is dark (not pink)
+        // Pink range: high R, low G, medium-high B
+        const isPink = r > 180 && g < 80 && b > 60 && b < 200;
+
+        if (!isPink) {
+          // Brightness of the pixel
+          const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+          if (brightness < 160) {
+            // Dark pixel → make white
+            px[i]   = 255;
+            px[i+1] = 255;
+            px[i+2] = 255;
+          }
+        }
+        // Pink pixels → leave exactly as-is
+      }
+
+      ctx.putImageData(data, 0, 0);
+      document.getElementById('status').textContent = '✅ Logo procesado correctamente';
+      document.getElementById('btn').style.display = 'block';
+    };
+
+    img.onerror = function() {
+      document.getElementById('status').textContent =
+        '❌ No se pudo cargar logo.png. Asegurate de estar en http://localhost:5173/procesar-logo.html';
+    };
+
+    // Load from same folder
+    img.crossOrigin = 'anonymous';
+    img.src = '/logo.png';
+
+    document.getElementById('btn').onclick = function() {
+      const link = document.createElement('a');
+      link.download = 'logo-white.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+  </script>
+</body>
+</html>

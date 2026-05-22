@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { T, api } from '../../App.jsx';
+import { t } from '../../i18n.js';
 
 function EyeIcon({ open }) {
   return open ? (
@@ -42,7 +43,7 @@ function Input({ label, value, onChange, type = 'text' }) {
   );
 }
 
-export default function UserProfile({ user, onUpdate, onLogout }) {
+export default function UserProfile({ user, onUpdate, onLogout, lang }) {
   const [name, setName]         = useState(user.name || '');
   const [lastname, setLastname] = useState(user.lastname || '');
   const [email, setEmail]       = useState(user.email || '');
@@ -61,9 +62,9 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
   const saveProfile = async () => {
     setSaving(true); setProfileError(''); setSavedMsg('');
     try {
-      await api('/auth/profile', { method: 'PUT', body: { name, lastname, email, username } });
+      await api('/auth/profile', { method: 'PUT', body: { name, lastname, email, username, language: user.language } });
       onUpdate({ ...user, name, lastname, email, username });
-      setSavedMsg('Perfil actualizado correctamente');
+      setSavedMsg(t(lang, 'profileUpdated'));
       setTimeout(() => setSavedMsg(''), 3000);
     } catch (err) {
       setProfileError(err.message);
@@ -75,17 +76,17 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
   const changePassword = async () => {
     setPassError(''); setPassSuccess('');
     if (newPass.length < 8) {
-      setPassError('La nueva contraseña debe tener al menos 8 caracteres');
+      setPassError(t(lang, 'passwordTooShort'));
       return;
     }
     if (newPass !== confirmPass) {
-      setPassError('Las contraseñas no coinciden. Por favor verificá e intentá de nuevo.');
+      setPassError(t(lang, 'passwordMismatch'));
       return;
     }
     setSavingPass(true);
     try {
       await api('/auth/password', { method: 'PUT', body: { currentPassword: currentPass, newPassword: newPass } });
-      setPassSuccess('¡Contraseña cambiada correctamente!');
+      setPassSuccess(t(lang, 'passwordChanged'));
       setCurrentPass(''); setNewPass(''); setConfirmPass('');
       setTimeout(() => setPassSuccess(''), 4000);
     } catch (err) {
@@ -98,7 +99,7 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
   return (
     <div className="fadeUp" style={{ maxWidth: 600 }}>
       <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: T.INK, marginBottom: '1.5rem' }}>
-        Mi Perfil
+        {t(lang, 'myProfile')}
       </h1>
 
       {/* Avatar */}
@@ -114,7 +115,7 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
           </div>
           <div style={{ color: T.MUTED, fontSize: 13 }}>{email}</div>
           <div style={{ color: T.CYAN, fontSize: 12, marginTop: 2, textTransform: 'capitalize' }}>
-            {user.role === 'admin' ? '⭐ Administrador' : '👤 Usuario'}
+            {user.role === 'admin' ? t(lang, 'admin') : t(lang, 'user')}
           </div>
         </div>
       </div>
@@ -122,13 +123,13 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
       {/* Personal data */}
       <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
         <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 16, marginBottom: '1.2rem' }}>
-          Datos personales
+          {t(lang, 'personalData')}
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Input label="Nombre" value={name} onChange={setName} />
-          <Input label="Apellido" value={lastname} onChange={setLastname} />
-          <Input label="Email" value={email} onChange={setEmail} />
-          <Input label="Usuario de login" value={username} onChange={setUsername} />
+          <Input label={t(lang, 'firstName')} value={name} onChange={setName} />
+          <Input label={t(lang, 'lastName')} value={lastname} onChange={setLastname} />
+          <Input label={t(lang, 'email')} value={email} onChange={setEmail} />
+          <Input label={t(lang, 'loginUser')} value={username} onChange={setUsername} />
         </div>
         {profileError && (
           <div style={{ background: 'rgba(255,68,68,0.1)', border: `1px solid ${T.DANGER}`,
@@ -142,26 +143,26 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
             {savedMsg}
           </div>
         )}
-        <button onClick={saveProfile} disabled={saving}
+        <button onClick={saveProfile} disabled={saving} className="btn-primary"
           style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem',
             color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
             fontSize: 14, opacity: saving ? 0.7 : 1 }}>
-          {saving ? 'Guardando…' : '💾 Guardar cambios'}
+          {saving ? t(lang, 'saving') : t(lang, 'saveChanges')}
         </button>
       </div>
 
       {/* Change password */}
       <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
         <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 16, marginBottom: '1.2rem' }}>
-          Cambiar contraseña
+          {t(lang, 'changePassword')}
         </h3>
-        <Input label="Contraseña actual" value={currentPass} onChange={setCurrentPass} type="password" />
-        <Input label="Nueva contraseña" value={newPass} onChange={setNewPass} type="password" />
-        <Input label="Repetir nueva contraseña" value={confirmPass} onChange={setConfirmPass} type="password" />
+        <Input label={t(lang, 'currentPassword')} value={currentPass} onChange={setCurrentPass} type="password" />
+        <Input label={t(lang, 'newPassword')} value={newPass} onChange={setNewPass} type="password" />
+        <Input label={t(lang, 'repeatPassword')} value={confirmPass} onChange={setConfirmPass} type="password" />
         {confirmPass && newPass && confirmPass !== newPass && (
           <div style={{ background: 'rgba(255,68,68,0.1)', border: `1px solid ${T.DANGER}`,
             borderRadius: 8, padding: '0.6rem 1rem', color: T.DANGER, fontSize: 13, marginBottom: 10 }}>
-            Las contraseñas no coinciden. Por favor verificá e intentá de nuevo.
+            {t(lang, 'passwordMismatch')}
           </div>
         )}
         {passError && (
@@ -176,28 +177,28 @@ export default function UserProfile({ user, onUpdate, onLogout }) {
             {passSuccess}
           </div>
         )}
-        <button onClick={changePassword} disabled={savingPass || !currentPass || !newPass || !confirmPass}
+        <button onClick={changePassword} disabled={savingPass || !currentPass || !newPass || !confirmPass} className="btn-primary"
           style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem',
             color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
             fontSize: 14, opacity: (savingPass || !currentPass) ? 0.6 : 1 }}>
-          {savingPass ? 'Cambiando…' : '🔒 Cambiar contraseña'}
+          {savingPass ? t(lang, 'changingPass') : t(lang, 'changePasswordBtn')}
         </button>
       </div>
 
       {/* Logout */}
       <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem' }}>
         <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 16, marginBottom: 6 }}>
-          Sesión
+          {t(lang, 'session')}
         </h3>
         <p style={{ color: T.MUTED, fontSize: 13, marginBottom: '1rem' }}>
-          Al cerrar sesión, vas a ser redirigido a la pantalla de login.
+          {t(lang, 'logoutDesc')}
         </p>
         <div style={{ height: 1, background: T.BORDER, marginBottom: '1rem' }} />
-        <button onClick={onLogout}
+        <button onClick={onLogout} className="btn-danger"
           style={{ background: 'none', border: `1px solid ${T.DANGER}`, borderRadius: 8,
             padding: '0.7rem 1.5rem', color: T.DANGER,
             fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14 }}>
-          🚪 Cerrar sesión
+          {t(lang, 'logout')}
         </button>
       </div>
     </div>

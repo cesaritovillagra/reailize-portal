@@ -43,7 +43,7 @@ router.put('/config', authMiddleware, async (req, res) => {
 
 // POST /api/qbr/generate — generate QBR content
 router.post('/generate', authMiddleware, async (req, res) => {
-  const { project_id, date_from, date_to } = req.body;
+  const { project_id, date_from, date_to, lang } = req.body;
   try {
     const [ticketsRes, configRes] = await Promise.all([
       pool.query(
@@ -62,10 +62,10 @@ router.post('/generate', authMiddleware, async (req, res) => {
     const config  = configRes.rows[0]?.content || DEFAULT_QBR_METHODOLOGY;
 
     if (tickets.length === 0)
-      return res.status(400).json({ error: 'No hay tickets en ese rango de fechas' });
+      return res.status(400).json({ error: lang === 'en' ? 'No tickets found in that date range' : 'No hay tickets en ese rango de fechas' });
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const prompt = buildQBRPrompt(tickets, config, date_from, date_to, req.user);
+    const prompt = buildQBRPrompt(tickets, config, date_from, date_to, req.user, lang || 'es');
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
@@ -290,13 +290,17 @@ function formatDate(d) {
   return `${months[parseInt(m)-1]} ${day}, ${y}`;
 }
 
-function buildQBRPrompt(tickets, config, date_from, date_to, user) {
+function buildQBRPrompt(tickets, config, date_from, date_to, user, lang) {
   const ticketsSummary = tickets.map(t =>
     `- [${t.task_id}] ${t.jira_id || ''} | ${t.status} | ${t.led_by} | ${t.problem_type}
      Impact: ${t.impact}
      Value: ${t.value_added}
      Strategic: ${t.strategic_relevance}`
   ).join('\n');
+
+  const langInstruction = lang === 'en'
+    ? 'Write the entire QBR document in English. Director-Level tone.'
+    : 'Escribí todo el documento QBR en español. Tono ejecutivo, nivel Director.';
 
   return `You are building a QBR (Quarterly Business Review) presentation for ${user.name} ${user.lastname}.
 
@@ -311,7 +315,7 @@ ${ticketsSummary}
 
 Generate a complete QBR document in Markdown format, using the methodology above.
 Structure it with ## headers for each section.
-Write in English, Director-Level tone.
+${langInstruction}
 Focus on impact, value, leadership, and strategic relevance — not task lists.
 Apply the "Absence Test" and "So What Test" to every item.`;
 }
