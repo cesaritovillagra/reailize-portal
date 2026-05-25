@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { T, api } from '../../App.jsx';
 import { t } from '../../i18n.js';
 
-const STATUSES      = ['Open', 'In Progress', 'Closed'];
+const STATUSES      = ['Open', 'In Progress', 'On Hold', 'Escalated', 'Blocked', 'Closed'];
 const PROBLEM_TYPES = ['application','infrastructure','observability','configuration','replication','failover','working_as_designed','transient'];
 const FIELDS = [
   { key: 'description',           label: 'Description'            },
@@ -24,12 +24,20 @@ function Badge({ label, color }) {
   );
 }
 
-function TicketCard({ ticket, onEdit, onDelete, lang }) {
-  const statusColor = ticket.status === 'Closed' ? T.SUCCESS : ticket.status === 'In Progress' ? T.WARN : T.CYAN;
+function statusColor(status) {
+  if (status === 'Closed')      return T.SUCCESS;
+  if (status === 'In Progress') return T.WARN;
+  if (status === 'Blocked')     return T.DANGER;
+  if (status === 'Escalated')   return '#ff9800';
+  if (status === 'On Hold')     return T.MUTED;
+  return T.CYAN;
+}
+
+function TicketCard({ ticket, onView, onDelete, lang }) {
   return (
     <div className="ticket-card" style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 12, padding: '1.2rem', marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div>
+        <div style={{ cursor: 'pointer' }} onClick={() => onView(ticket)}>
           <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.ACCENT, fontSize: 13 }}>
             {ticket.task_id}
           </span>
@@ -38,10 +46,12 @@ function TicketCard({ ticket, onEdit, onDelete, lang }) {
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <Badge label={ticket.status} color={statusColor} />
-          <button onClick={() => onEdit(ticket)} className="btn-row-action"
+          <Badge label={ticket.status} color={statusColor(ticket.status)} />
+          <button onClick={() => onView(ticket)} className="btn-row-action"
             style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
-              color: T.MUTED, padding: '3px 10px', fontSize: 12 }}>{t(lang, 'edit')}</button>
+              color: T.MUTED, padding: '3px 10px', fontSize: 12 }}>
+            {lang === 'es' ? 'Ver/Editar' : 'View/Edit'}
+          </button>
           <button onClick={() => onDelete(ticket.id)} className="btn-row-danger"
             style={{ background: 'none', border: `1px solid ${T.DANGER}22`, borderRadius: 6,
               color: T.DANGER, padding: '3px 10px', fontSize: 12 }}>{t(lang, 'delete')}</button>
@@ -59,6 +69,136 @@ function TicketCard({ ticket, onEdit, onDelete, lang }) {
         {(ticket.network_functions || []).length > 4 && (
           <Badge label={`+${ticket.network_functions.length - 4}`} color={T.MUTED} />
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Ticket Detail / Edit Modal ───────────────────────────── */
+function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
+  const [form, setForm]     = useState({ ...ticket });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      await api(`/tickets/${ticket.id}`, { method: 'PUT', body: form });
+      onSaved({ ...form });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async () => {
+    if (!confirm(t(lang, 'deleteConfirm'))) return;
+    try {
+      await api(`/tickets/${ticket.id}`, { method: 'DELETE' });
+      onDeleted(ticket.id);
+    } catch {}
+  };
+
+  const inputStyle = {
+    width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+    borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13,
+    fontFamily: 'Inter, sans-serif', outline: 'none',
+  };
+  const taStyle = { ...inputStyle, minHeight: 80, resize: 'vertical', lineHeight: 1.6 };
+  const labelStyle = { display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+    fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      padding: '2rem 1rem', overflowY: 'auto' }}>
+      <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 16,
+        padding: '2rem', maxWidth: 760, width: '100%', position: 'relative' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+          <div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: T.ACCENT }}>
+              {ticket.task_id}
+            </div>
+            {ticket.jira_id && (
+              <div style={{ color: T.MUTED, fontSize: 13, marginTop: 2 }}>{ticket.jira_id}</div>
+            )}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: T.MUTED,
+            fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+
+        {error && (
+          <div style={{ background: 'rgba(255,68,68,0.1)', border: `1px solid ${T.DANGER}`,
+            borderRadius: 8, padding: '0.7rem 1rem', color: T.DANGER, fontSize: 13, marginBottom: '1rem' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Top fields grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: '1.2rem' }}>
+          {[
+            { key: 'jira_id',      label: 'JIRA ID' },
+            { key: 'date_created', label: lang === 'es' ? 'Fecha creación' : 'Created date' },
+            { key: 'date_closed',  label: lang === 'es' ? 'Fecha cierre' : 'Closed date' },
+            { key: 'category',     label: t(lang, 'category') },
+            { key: 'environment',  label: t(lang, 'environment') },
+          ].map(f => (
+            <div key={f.key}>
+              <label style={labelStyle}>{f.label.toUpperCase()}</label>
+              <input value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)} style={inputStyle} />
+            </div>
+          ))}
+          <div>
+            <label style={labelStyle}>STATUS</label>
+            <select value={form.status || 'Open'} onChange={e => set('status', e.target.value)}
+              style={{ ...inputStyle }}>
+              {STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>{t(lang, 'problemTypeLabel').toUpperCase()}</label>
+            <select value={form.problem_type || ''} onChange={e => set('problem_type', e.target.value)}
+              style={{ ...inputStyle }}>
+              <option value="">{t(lang, 'selectOption')}</option>
+              {PROBLEM_TYPES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Text fields */}
+        {FIELDS.map(f => (
+          <div key={f.key} style={{ marginBottom: '0.9rem' }}>
+            <label style={labelStyle}>{f.label.toUpperCase()}</label>
+            <textarea value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)} style={taStyle} />
+          </div>
+        ))}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: '1.5rem' }}>
+          <button onClick={del} style={{ background: 'none', border: `1px solid ${T.DANGER}44`,
+            borderRadius: 8, padding: '0.65rem 1.2rem', color: T.DANGER, fontSize: 13,
+            fontFamily: "'Space Grotesk', sans-serif", cursor: 'pointer' }}>
+            🗑 {t(lang, 'delete')}
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={{ background: 'none', border: `1px solid ${T.BORDER}`,
+              borderRadius: 8, padding: '0.65rem 1.2rem', color: T.MUTED, fontSize: 13,
+              fontFamily: "'Space Grotesk', sans-serif", cursor: 'pointer' }}>
+              {t(lang, 'cancel')}
+            </button>
+            <button onClick={save} disabled={saving} style={{ background: T.ACCENT, border: 'none',
+              borderRadius: 8, padding: '0.65rem 1.4rem', color: '#fff', fontSize: 13,
+              fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, cursor: 'pointer',
+              opacity: saving ? 0.7 : 1 }}>
+              {saving ? t(lang, 'saving') : t(lang, 'saveChanges')}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -308,15 +448,35 @@ export default function DataIngestion({ user, project, lang }) {
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
-  const [editTicket, setEditTicket] = useState(null);
-  const [tab, setTab]               = useState('list'); // 'list' | 'new' | 'upload'
+  const [viewTicket, setViewTicket] = useState(null);
+  const [tab, setTab]               = useState('list');
+
+  // Filters
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo,   setFilterDateTo]   = useState('');
+  const [filterStatus,   setFilterStatus]   = useState('');
+  const [filterJiraId,   setFilterJiraId]   = useState('');
+
+  const buildQuery = (extra = {}) => {
+    const p = { project_id: project.id, ...extra };
+    if (filterDateFrom) p.date_from = filterDateFrom;
+    if (filterDateTo)   p.date_to   = filterDateTo;
+    if (filterStatus)   p.status    = filterStatus;
+    if (filterJiraId)   p.jira_id   = filterJiraId;
+    return new URLSearchParams(p).toString();
+  };
+
+  const loadTickets = (extra = {}) => {
+    if (!project) return;
+    setLoading(true);
+    api(`/tickets?${buildQuery(extra)}`)
+      .then(tk => { setTickets(tk); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
 
   useEffect(() => {
     if (!project) return;
-    setLoading(true);
-    api(`/tickets?project_id=${project.id}`)
-      .then(tk => { setTickets(tk); setLoading(false); })
-      .catch(() => setLoading(false));
+    loadTickets();
   }, [project]);
 
   const processInput = async () => {
@@ -351,6 +511,7 @@ export default function DataIngestion({ user, project, lang }) {
     try {
       await api(`/tickets/${id}`, { method: 'DELETE' });
       setTickets(prev => prev.filter(tk => tk.id !== id));
+      setViewTicket(null);
     } catch {}
   };
 
@@ -359,6 +520,16 @@ export default function DataIngestion({ user, project, lang }) {
     api(`/tickets?project_id=${project.id}`)
       .then(tk => { setTickets(tk); setTab('list'); })
       .catch(() => {});
+  };
+
+  const clearFilters = () => {
+    setFilterDateFrom(''); setFilterDateTo('');
+    setFilterStatus(''); setFilterJiraId('');
+    if (!project) return;
+    setLoading(true);
+    api(`/tickets?project_id=${project.id}`)
+      .then(tk => { setTickets(tk); setLoading(false); })
+      .catch(() => setLoading(false));
   };
 
   if (!project) {
@@ -380,6 +551,23 @@ export default function DataIngestion({ user, project, lang }) {
 
   return (
     <div className="fadeUp">
+      {/* Ticket detail/edit modal */}
+      {viewTicket && (
+        <TicketModal
+          ticket={viewTicket}
+          lang={lang}
+          onClose={() => setViewTicket(null)}
+          onSaved={(updated) => {
+            setTickets(prev => prev.map(tk => tk.id === updated.id ? updated : tk));
+            setViewTicket(null);
+          }}
+          onDeleted={(id) => {
+            setTickets(prev => prev.filter(tk => tk.id !== id));
+            setViewTicket(null);
+          }}
+        />
+      )}
+
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: T.INK, marginBottom: 4 }}>
@@ -414,6 +602,62 @@ export default function DataIngestion({ user, project, lang }) {
       {/* LIST TAB */}
       {tab === 'list' && (
         <div>
+          {/* Filter bar */}
+          <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 12,
+            padding: '1rem 1.2rem', marginBottom: '1.2rem' }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+                  fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
+                  {lang === 'es' ? 'DESDE' : 'FROM'}
+                </label>
+                <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                  style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                    padding: '0.45rem 0.7rem', color: T.INK, fontSize: 13, outline: 'none' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+                  fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
+                  {lang === 'es' ? 'HASTA' : 'TO'}
+                </label>
+                <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                  style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                    padding: '0.45rem 0.7rem', color: T.INK, fontSize: 13, outline: 'none' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+                  fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>STATUS</label>
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                  style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                    padding: '0.45rem 0.7rem', color: T.INK, fontSize: 13, outline: 'none' }}>
+                  <option value="">{lang === 'es' ? 'Todos' : 'All'}</option>
+                  {STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+                  fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>JIRA ID</label>
+                <input value={filterJiraId} onChange={e => setFilterJiraId(e.target.value)}
+                  placeholder="CTAP-XXXXX"
+                  onKeyDown={e => e.key === 'Enter' && loadTickets()}
+                  style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                    padding: '0.45rem 0.7rem', color: T.INK, fontSize: 13, outline: 'none', width: 140 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => loadTickets()} className="btn-primary"
+                  style={{ background: T.ACCENT, border: 'none', borderRadius: 6, padding: '0.45rem 1rem',
+                    color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13 }}>
+                  {lang === 'es' ? '🔍 Buscar' : '🔍 Search'}
+                </button>
+                <button onClick={clearFilters} className="btn-secondary"
+                  style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                    padding: '0.45rem 0.8rem', color: T.MUTED, fontSize: 13 }}>
+                  {lang === 'es' ? 'Limpiar' : 'Clear'}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {loading ? (
             <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem' }}>{t(lang, 'loadingTickets')}</div>
           ) : tickets.length === 0 ? (
@@ -423,9 +667,14 @@ export default function DataIngestion({ user, project, lang }) {
               <div style={{ marginTop: 8, fontSize: 13 }}>{t(lang, 'noTicketsHint')}</div>
             </div>
           ) : (
-            tickets.map(tk => (
-              <TicketCard key={tk.id} ticket={tk} onEdit={setEditTicket} onDelete={deleteTicket} lang={lang} />
-            ))
+            <>
+              <div style={{ color: T.MUTED, fontSize: 12, marginBottom: 10 }}>
+                {tickets.length} {lang === 'es' ? 'tickets' : 'tickets'}
+              </div>
+              {tickets.map(tk => (
+                <TicketCard key={tk.id} ticket={tk} onView={setViewTicket} onDelete={deleteTicket} lang={lang} />
+              ))}
+            </>
           )}
         </div>
       )}

@@ -32,16 +32,17 @@ export default function Sidebar({ user, section, setSection, project, setProject
     const isHovered = hoveredItem === key && !isActive;
     return {
       display: 'flex', alignItems: 'center', gap: 10,
-      padding: '0.65rem 1rem', borderRadius: 8, marginBottom: 2, cursor: 'default',
+      padding: '0.65rem 1rem', borderRadius: 8, marginBottom: 2, cursor: 'pointer',
       background: isActive  ? `rgba(244,0,133,0.12)`
-                : isHovered ? `rgba(244,0,133,0.06)`
+                : isHovered ? `rgba(255,255,255,0.10)`
                 : 'transparent',
-      color: isActive ? T.ACCENT : T.INK,
-      borderLeft: isActive  ? `2px solid ${T.ACCENT}`
-                : isHovered ? `2px solid rgba(244,0,133,0.35)`
-                : '2px solid transparent',
-      fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 13,
-      transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+      color: isActive ? T.ACCENT : isHovered ? '#ffffff' : T.MUTED,
+      borderLeft: isActive  ? `3px solid ${T.ACCENT}`
+                : isHovered ? `3px solid rgba(255,255,255,0.75)`
+                : '3px solid transparent',
+      fontFamily: "'Inter', sans-serif", fontWeight: isHovered ? 700 : 400, fontSize: 13,
+      letterSpacing: isHovered ? 0.2 : 0,
+      transition: 'background 0.12s, border-color 0.12s, color 0.12s',
     };
   };
 

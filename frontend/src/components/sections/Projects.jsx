@@ -255,7 +255,7 @@ export default function Projects({ user, project, setProject, lang }) {
           <div style={{ fontSize: 13 }}>{t(lang, 'noProjectsHint')}</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 340px))', gap: 16 }}>
           {projects.map(p => {
             const isActive  = project?.id === p.id;
             const isEditing = editingId === p.id;
