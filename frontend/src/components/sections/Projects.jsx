@@ -261,12 +261,15 @@ export default function Projects({ user, project, setProject, lang }) {
             const isEditing = editingId === p.id;
             return (
               <div key={p.id} className="ticket-card"
+                onClick={() => { if (!isEditing) setProject(p); }}
                 style={{
                   background: T.PANEL,
                   border: `1px solid ${isActive ? T.ACCENT : T.BORDER}`,
                   borderRadius: 14, padding: '1.2rem',
                   boxShadow: isActive ? `0 0 0 1px ${T.ACCENT}33, 0 4px 20px rgba(244,0,133,0.1)` : 'none',
                   position: 'relative',
+                  cursor: isEditing ? 'default' : 'pointer',
+                  transition: 'border-color 0.15s, box-shadow 0.15s',
                 }}>
 
                 {/* Active badge */}
@@ -333,16 +336,8 @@ export default function Projects({ user, project, setProject, lang }) {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-                      {!isActive && (
-                        <button onClick={() => setProject(p)} className="btn-primary"
-                          style={{ background: T.ACCENT, border: 'none', borderRadius: 6,
-                            padding: '0.4rem 0.9rem', color: '#fff', fontSize: 12,
-                            fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
-                          {t(lang, 'selectProject2')}
-                        </button>
-                      )}
-                      <button
+                    <div style={{ display: 'flex', gap: 6, marginTop: 12 }} onClick={e => e.stopPropagation()}>
+<button
                         onClick={() => { setEditingId(p.id); setEditName(p.name); setEditDesc(p.description || ''); }}
                         className="btn-row-action"
                         style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
@@ -354,9 +349,9 @@ export default function Projects({ user, project, setProject, lang }) {
                           color: T.MUTED, padding: '0.4rem 0.9rem', fontSize: 12 }}>
                         {t(lang, 'archive')}
                       </button>
-                      <button onClick={() => setDeleteTarget(p)} className="btn-row-danger"
-                        style={{ background: 'none', border: `1px solid ${T.DANGER}33`, borderRadius: 6,
-                          color: T.DANGER, padding: '0.4rem 0.9rem', fontSize: 12 }}>
+                      <button onClick={() => setDeleteTarget(p)} className="btn-row-action"
+                        style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                          color: T.MUTED, padding: '0.4rem 0.9rem', fontSize: 12 }}>
                         {t(lang, 'deleteProject')}
                       </button>
                     </div>
