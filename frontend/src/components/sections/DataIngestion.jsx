@@ -1,8 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { T, api } from '../../App.jsx';
 import { t } from '../../i18n.js';
 
 const STATUSES      = ['Open', 'In Progress', 'On Hold', 'Escalated', 'Blocked', 'Closed'];
+
+// ── Date helpers ──────────────────────────────────────────────
+function formatDate(dateStr, lang) {
+  if (!dateStr) return '';
+  // Handle ISO format (2026-05-14T03:00:00.000Z) or YYYY-MM-DD
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const day   = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year  = String(d.getUTCFullYear()).slice(-2);
+  return lang === 'en' ? `${month}/${day}/${year}` : `${day}/${month}/${year}`;
+}
+
+function parseToISO(input, lang) {
+  if (!input) return '';
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(input)) return input.slice(0, 10);
+  const parts = input.split('/');
+  if (parts.length === 3) {
+    let [a, b, y] = parts;
+    const day   = lang === 'en' ? b : a;
+    const month = lang === 'en' ? a : b;
+    if (y.length === 2) y = '20' + y;   // 26 → 2026
+    if (y.length === 4) y = y;
+    return `${y}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`;
+  }
+  return input;
+}
 const PROBLEM_TYPES = ['application','infrastructure','observability','configuration','replication','failover','working_as_designed','transient'];
 const FIELDS = [
   { key: 'description',           label: 'Description'            },
@@ -111,12 +140,13 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
   const labelStyle = { display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
     fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 };
 
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      padding: '2rem 1rem', overflowY: 'auto' }}>
+  return ReactDOM.createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '2rem 1rem' }}>
       <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 16,
-        padding: '2rem', maxWidth: 760, width: '100%', position: 'relative' }}>
+        padding: '2rem', maxWidth: 760, width: '100%', position: 'relative',
+        maxHeight: '90vh', overflowY: 'auto' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
@@ -150,7 +180,20 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
           ].map(f => (
             <div key={f.key}>
               <label style={labelStyle}>{f.label.toUpperCase()}</label>
-              <input value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)} style={inputStyle} />
+              <input
+                value={['date_created','date_closed'].includes(f.key)
+                  ? formatDate(form[f.key], lang)
+                  : (form[f.key] || '')}
+                onChange={e => set(f.key, ['date_created','date_closed'].includes(f.key)
+                  ? e.target.value
+                  : e.target.value)}
+                onBlur={e => { if (['date_created','date_closed'].includes(f.key))
+                  set(f.key, parseToISO(e.target.value, lang)); }}
+                placeholder={['date_created','date_closed'].includes(f.key)
+                  ? (lang === 'en' ? 'MM/DD/YY' : 'DD/MM/YY')
+                  : ''}
+                style={inputStyle}
+              />
             </div>
           ))}
           <div>
@@ -200,7 +243,8 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -485,6 +529,8 @@ export default function DataIngestion({ user, project, lang }) {
   const [filterDateTo,   setFilterDateTo]   = useState('');
   const [filterStatus,   setFilterStatus]   = useState('');
   const [filterJiraId,   setFilterJiraId]   = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [page,     setPage]     = useState(1);
 
   const buildQuery = (extra = {}) => {
     const p = { project_id: project.id, ...extra };
@@ -499,7 +545,7 @@ export default function DataIngestion({ user, project, lang }) {
     if (!project) return;
     setLoading(true);
     api(`/tickets?${buildQuery(extra)}`)
-      .then(tk => { setTickets(tk); setLoading(false); })
+      .then(tk => { setTickets(tk); setPage(1); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
@@ -695,16 +741,76 @@ export default function DataIngestion({ user, project, lang }) {
               <div>{t(lang, 'noTickets')}</div>
               <div style={{ marginTop: 8, fontSize: 13 }}>{t(lang, 'noTicketsHint')}</div>
             </div>
-          ) : (
-            <>
-              <div style={{ color: T.MUTED, fontSize: 12, marginBottom: 10 }}>
-                {tickets.length} {lang === 'es' ? 'tickets' : 'tickets'}
-              </div>
-              {tickets.map(tk => (
-                <TicketCard key={tk.id} ticket={tk} onView={setViewTicket} onDelete={deleteTicket} lang={lang} />
-              ))}
-            </>
-          )}
+          ) : (() => {
+            const totalPages = Math.ceil(tickets.length / pageSize);
+            const start = (page - 1) * pageSize;
+            const paginated = tickets.slice(start, start + pageSize);
+            return (
+              <>
+                {/* Top bar: count + page size selector */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ color: T.MUTED, fontSize: 12 }}>
+                    {lang === 'es'
+                      ? `Mostrando ${start + 1}–${Math.min(start + pageSize, tickets.length)} de ${tickets.length} tickets`
+                      : `Showing ${start + 1}–${Math.min(start + pageSize, tickets.length)} of ${tickets.length} tickets`}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: T.MUTED, fontSize: 12 }}>{lang === 'es' ? 'Ver:' : 'Show:'}</span>
+                    {[25, 50, 100, 200].map(n => (
+                      <button key={n} onClick={() => { setPageSize(n); setPage(1); }}
+                        style={{
+                          background: pageSize === n ? T.ACCENT : 'none',
+                          border: `1px solid ${pageSize === n ? T.ACCENT : T.BORDER}`,
+                          borderRadius: 6, padding: '2px 10px', fontSize: 12,
+                          color: pageSize === n ? '#fff' : T.MUTED,
+                          cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
+                        }}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Ticket cards */}
+                {paginated.map(tk => (
+                  <TicketCard key={tk.id} ticket={tk} onView={setViewTicket} onDelete={deleteTicket} lang={lang} />
+                ))}
+
+                {/* Pagination nav */}
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center',
+                    gap: 8, marginTop: 16 }}>
+                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                      style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                        padding: '4px 12px', color: page === 1 ? T.MUTED : T.INK,
+                        cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 13 }}>
+                      ‹ {lang === 'es' ? 'Anterior' : 'Prev'}
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(n => n === 1 || n === totalPages || Math.abs(n - page) <= 1)
+                      .reduce((acc, n, i, arr) => {
+                        if (i > 0 && n - arr[i-1] > 1) acc.push('...');
+                        acc.push(n); return acc;
+                      }, [])
+                      .map((n, i) => n === '...'
+                        ? <span key={`ellipsis-${i}`} style={{ color: T.MUTED, fontSize: 13 }}>…</span>
+                        : <button key={n} onClick={() => setPage(n)}
+                            style={{ background: page === n ? T.ACCENT : 'none',
+                              border: `1px solid ${page === n ? T.ACCENT : T.BORDER}`,
+                              borderRadius: 6, padding: '4px 10px', fontSize: 13,
+                              color: page === n ? '#fff' : T.MUTED, cursor: 'pointer' }}>
+                            {n}
+                          </button>
+                      )}
+                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                      style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                        padding: '4px 12px', color: page === totalPages ? T.MUTED : T.INK,
+                        cursor: page === totalPages ? 'not-allowed' : 'pointer', fontSize: 13 }}>
+                      {lang === 'es' ? 'Siguiente' : 'Next'} ›
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
