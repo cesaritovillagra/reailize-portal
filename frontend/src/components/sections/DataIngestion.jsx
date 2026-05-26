@@ -344,12 +344,29 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
 
           {/* Preview — TXT: show raw text; CSV/Excel: show table */}
           {isTxt ? (
-            <div style={{ marginBottom: '1.2rem', borderRadius: 8, border: `1px solid ${T.BORDER}`,
-              maxHeight: 280, overflowY: 'auto', background: T.PANEL2 }}>
-              <pre style={{ margin: 0, padding: '0.8rem 1rem', fontSize: 12, color: T.INK,
-                fontFamily: 'Inter, sans-serif', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                {rows[0]?.raw_input || ''}
-              </pre>
+            <div style={{ marginBottom: '1.2rem' }}>
+              <div style={{ color: T.MUTED, fontSize: 12, marginBottom: 8, fontFamily: 'Inter, sans-serif' }}>
+                {rows.length} {rows.length === 1
+                  ? (lang === 'es' ? 'ticket detectado' : 'ticket detected')
+                  : (lang === 'es' ? 'tickets detectados (separados por ---)' : 'tickets detected (separated by ---)')}
+              </div>
+              <div style={{ borderRadius: 8, border: `1px solid ${T.BORDER}`,
+                maxHeight: 280, overflowY: 'auto', background: T.PANEL2 }}>
+                {rows.map((row, i) => (
+                  <div key={i} style={{
+                    borderBottom: i < rows.length - 1 ? `1px solid ${T.BORDER}` : 'none',
+                    padding: '0.6rem 1rem',
+                  }}>
+                    <div style={{ fontSize: 10, color: T.ACCENT, fontFamily: "'Space Grotesk', sans-serif",
+                      fontWeight: 700, marginBottom: 4 }}>TICKET {i + 1}</div>
+                    <pre style={{ margin: 0, fontSize: 11, color: T.INK,
+                      fontFamily: 'Inter, sans-serif', whiteSpace: 'pre-wrap', lineHeight: 1.5,
+                      maxHeight: 100, overflow: 'hidden' }}>
+                      {row.raw_input?.slice(0, 300)}{row.raw_input?.length > 300 ? '…' : ''}
+                    </pre>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div style={{ overflowX: 'auto', marginBottom: '1.2rem', borderRadius: 8,

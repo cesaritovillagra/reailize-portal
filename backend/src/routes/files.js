@@ -39,7 +39,9 @@ router.post('/parse', authMiddleware, upload.single('file'), (req, res) => {
     } else if (ext === 'txt') {
       const text = req.file.buffer.toString('utf-8').trim();
       if (!text) return res.json({ rows: [], count: 0, isTxt: true });
-      rows = [{ raw_input: text }];
+      // Split by --- separator (supports multiple tickets in one file)
+      const blocks = text.split(/\n---\n/).map(b => b.trim()).filter(b => b.length > 0);
+      rows = blocks.map(block => ({ raw_input: block }));
       return res.json({ rows, count: rows.length, isTxt: true });
 
     } else {
