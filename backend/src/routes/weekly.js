@@ -72,31 +72,19 @@ router.get('/tickets', authMiddleware, async (req, res) => {
   if (!project_id) return res.status(400).json({ error: 'project_id requerido' });
 
   try {
-    // Period tickets — created during the selected period
+    // All tickets within the selected date range (user-defined window)
     const periodResult = await pool.query(
       `SELECT * FROM tickets
        WHERE user_id=$1 AND project_id=$2 AND deleted=false
-         AND exclude_from_weekly=false
-         AND created_at >= $3::date
-         AND created_at <= ($4::date + interval '1 day')
-       ORDER BY created_at DESC`,
+         AND date_created >= $3::date
+         AND date_created <= ($4::date + interval '1 day')
+       ORDER BY date_created DESC`,
       [req.user.id, project_id, date_from, date_to]
-    );
-
-    // Carry-over tickets — older open/in-progress tickets
-    const carryoverResult = await pool.query(
-      `SELECT * FROM tickets
-       WHERE user_id=$1 AND project_id=$2 AND deleted=false
-         AND exclude_from_weekly=false
-         AND status NOT IN ('Closed')
-         AND created_at < $3::date
-       ORDER BY created_at DESC`,
-      [req.user.id, project_id, date_from]
     );
 
     res.json({
       period: periodResult.rows,
-      carryover: carryoverResult.rows,
+      carryover: [],
     });
   } catch (err) {
     console.error(err);
@@ -176,202 +164,133 @@ router.post('/export', authMiddleware, async (req, res) => {
 
   const pptxgen = require('pptxgenjs');
 
-  const BG     = '13131a';
-  const BG2    = '1a1a24';
-  const ACC    = 'F40085';
-  const INK    = 'f0f0f5';
-  const MUTED  = '6b6b80';
-  const BORDER = '2a2a38';
+  // ── Colors ──────────────────────────────────────────────────────────────────
+  const ACC       = 'F40085';
+  const WHITE     = 'FFFFFF';
+  const DARK      = '1A1A1A';
+  const MUTED_TXT = '444444';
+  const ROW_ODD   = 'FFFFFF';
+  const ROW_EVEN  = 'FDE8F4';
+  const BORDER_C  = 'E0A0CC';
 
-  const STATUS_COLORS = { blue: '3B82F6', green: '00d084', orange: 'ffb800', red: 'ff4444' };
-  const OVERALL_COLORS = { Green: '00d084', Yellow: 'ffb800', Orange: 'FF8C00', Red: 'ff4444' };
+  const STATUS_COLORS = { blue: '3B82F6', green: '00A878', orange: 'FF8C00', red: 'D32F2F' };
   const STATUS_LABELS = { blue: 'COMPLETED', green: 'ON TRACK', orange: 'BLOCKED', red: 'CRITICAL' };
-  const ICON_MAP = { alert: '🚨', pin: '📌', warning: '⚠', bell: '🔔', normal: '●' };
+  const ICON_MAP      = { alert: '⚠', pin: '📌', warning: '⚠', bell: '🔔', normal: '●' };
 
-  function parseBoldText(text, baseColor, fontSize) {
+  // Parse **bold** and also color "COMPLETED" / "→ COMPLETED" in ACC
+  function parseRichText(text, fontSize) {
     const parts = [];
-    const regex = /\*\*(.*?)\*\*/g;
-    let lastIndex = 0, match;
+    // Split by **bold** and COMPLETED markers
+    const regex = /(\*\*(.*?)\*\*|→\s*COMPLETED\.?|COMPLETED\.?)/g;
+    let last = 0, match;
     while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex)
-        parts.push({ text: text.slice(lastIndex, match.index), options: { color: baseColor, fontSize } });
-      parts.push({ text: match[1], options: { bold: true, color: INK, fontSize } });
-      lastIndex = regex.lastIndex;
+      if (match.index > last)
+        parts.push({ text: text.slice(last, match.index), options: { fontSize, color: MUTED_TXT, fontFace: 'Calibri' } });
+      if (match[2]) {
+        parts.push({ text: match[2], options: { fontSize, bold: true, color: DARK, fontFace: 'Calibri' } });
+      } else {
+        parts.push({ text: match[0], options: { fontSize, bold: true, color: ACC, fontFace: 'Calibri' } });
+      }
+      last = regex.lastIndex;
     }
-    if (lastIndex < text.length)
-      parts.push({ text: text.slice(lastIndex), options: { color: baseColor, fontSize } });
-    return parts.length ? parts : [{ text, options: { color: baseColor, fontSize } }];
+    if (last < text.length)
+      parts.push({ text: text.slice(last), options: { fontSize, color: MUTED_TXT, fontFace: 'Calibri' } });
+    return parts.length ? parts : [{ text, options: { fontSize, color: MUTED_TXT, fontFace: 'Calibri' } }];
   }
 
   try {
     const pres = new pptxgen();
     pres.layout = 'LAYOUT_WIDE'; // 13.3" × 7.5"
 
-    // ── SLIDE 1: Cover ────────────────────────────────────────
-    const cover = pres.addSlide();
-    cover.background = { color: BG };
-
-    // Left accent stripe
-    cover.addShape(pres.shapes.RECTANGLE, {
-      x: 0, y: 0, w: 0.12, h: 7.5,
-      fill: { color: ACC }, line: { color: ACC, pt: 0 },
-    });
-    // Dark overlay band (top strip)
-    cover.addShape(pres.shapes.RECTANGLE, {
-      x: 0, y: 0, w: 13.3, h: 1.0,
-      fill: { color: '0d0d14' }, line: { color: '0d0d14', pt: 0 },
-    });
-
-    // AT&T IoT label
-    cover.addText('AT&T IoT', {
-      x: 0.4, y: 0.22, w: 5, h: 0.45,
-      fontSize: 13, color: ACC, fontFace: 'Arial',
-      bold: true, margin: 0,
-    });
-
-    // Project name
-    if (project_name) {
-      cover.addText(project_name.toUpperCase(), {
-        x: 0.4, y: 0.62, w: 9, h: 0.3,
-        fontSize: 9, color: MUTED, fontFace: 'Arial', margin: 0,
-      });
-    }
-
-    // Main title
-    cover.addText('Weekly Status Report', {
-      x: 0.4, y: 1.4, w: 10, h: 1.1,
-      fontSize: 44, color: INK, fontFace: 'Arial', bold: true, margin: 0,
-    });
-
-    // Period label
-    cover.addText(report.period_label || '', {
-      x: 0.4, y: 2.55, w: 10, h: 0.6,
-      fontSize: 22, color: MUTED, fontFace: 'Arial', margin: 0,
-    });
-
-    // Overall status badge
-    const ocol = OVERALL_COLORS[report.overall_status] || MUTED;
-    cover.addShape(pres.shapes.RECTANGLE, {
-      x: 0.4, y: 3.4, w: 2.5, h: 0.52,
-      fill: { color: ocol, transparency: 75 },
-      line: { color: ocol, pt: 1 },
-    });
-    cover.addText(`● ${(report.overall_status || 'ON TRACK').toUpperCase()}`, {
-      x: 0.4, y: 3.4, w: 2.5, h: 0.52,
-      fontSize: 13, color: INK, fontFace: 'Arial',
-      bold: true, align: 'center', valign: 'middle', margin: 0,
-    });
-
-    // Summary text
-    cover.addText(report.overall_summary || '', {
-      x: 0.4, y: 4.1, w: 12.5, h: 2.4,
-      fontSize: 15, color: 'c8c8d8', fontFace: 'Arial', wrap: true, valign: 'top', margin: 0,
-    });
-
-    // ── SLIDES 2+: Initiatives (2 per slide) ─────────────────
+    // ── TABLE SLIDES ─────────────────────────────────────────────────────────
     const initiatives = report.initiatives || [];
-    const SLIDE_W = 13.3;
+    const ROWS_PER_SLIDE = 4;
 
-    for (let i = 0; i < initiatives.length; i += 2) {
+    for (let start = 0; start < initiatives.length; start += ROWS_PER_SLIDE) {
+      const batch = initiatives.slice(start, start + ROWS_PER_SLIDE);
       const slide = pres.addSlide();
-      slide.background = { color: BG };
+      slide.background = { color: WHITE };
 
-      // Left accent stripe
+      // Top magenta bar
       slide.addShape(pres.shapes.RECTANGLE, {
-        x: 0, y: 0, w: 0.08, h: 7.5,
+        x: 0, y: 0, w: 13.3, h: 0.18,
+        fill: { color: ACC }, line: { color: ACC, pt: 0 },
+      });
+      // Bottom magenta bar
+      slide.addShape(pres.shapes.RECTANGLE, {
+        x: 0, y: 7.32, w: 13.3, h: 0.18,
         fill: { color: ACC }, line: { color: ACC, pt: 0 },
       });
 
-      // Header bar
-      slide.addShape(pres.shapes.RECTANGLE, {
-        x: 0, y: 0, w: 13.3, h: 0.55,
-        fill: { color: '0d0d14' }, line: { color: '0d0d14', pt: 0 },
+      // Slide header
+      slide.addText('Weekly Status Report', {
+        x: 0.3, y: 0.25, w: 7, h: 0.35,
+        fontSize: 10, color: MUTED_TXT, fontFace: 'Calibri', bold: true, margin: 0,
       });
-      slide.addText(`Weekly Status Report  ·  ${report.period_label || ''}`, {
-        x: 0.22, y: 0.1, w: 10, h: 0.35,
-        fontSize: 9, color: MUTED, fontFace: 'Arial', margin: 0,
-      });
-      slide.addText(`${i + 1}–${Math.min(i + 2, initiatives.length)} of ${initiatives.length}`, {
-        x: 11.5, y: 0.1, w: 1.6, h: 0.35,
-        fontSize: 9, color: MUTED, fontFace: 'Arial', align: 'right', margin: 0,
+      slide.addText(report.period_label || '', {
+        x: 7, y: 0.25, w: 6, h: 0.35,
+        fontSize: 10, color: MUTED_TXT, fontFace: 'Calibri', align: 'right', margin: 0,
       });
 
-      const batch = [initiatives[i], initiatives[i + 1]].filter(Boolean);
-      const cardH = batch.length === 1 ? 6.6 : 3.25;
-      const startY = 0.7;
-      const CARD_X = 0.2;
-      const CARD_W = SLIDE_W - 0.4;
+      // Build table rows
+      const LEFT_W  = 4.2;
+      const RIGHT_W = 8.6;
+      const ROW_H   = batch.length <= 3 ? 1.65 : 1.3;
+      const tableY  = 0.72;
 
-      batch.forEach((item, idx) => {
-        const cardY = startY + idx * (cardH + 0.18);
-        const scol = STATUS_COLORS[item.status_color] || MUTED;
-        const slabel = STATUS_LABELS[item.status_color] || '';
-        const icon = ICON_MAP[item.icon] || '●';
+      // Header row
+      const headerRow = [
+        {
+          text: 'MILESTONE / ACTIVITY',
+          options: { bold: true, fontSize: 11, color: WHITE, fontFace: 'Calibri',
+            align: 'center', valign: 'middle', fill: { color: ACC } },
+        },
+        {
+          text: 'STATUS / NEXT STEPS',
+          options: { bold: true, fontSize: 11, color: WHITE, fontFace: 'Calibri',
+            align: 'center', valign: 'middle', fill: { color: ACC } },
+        },
+      ];
 
-        // Card bg
-        slide.addShape(pres.shapes.RECTANGLE, {
-          x: CARD_X, y: cardY, w: CARD_W, h: cardH,
-          fill: { color: BG2 },
-          line: { color: BORDER, pt: 0.5 },
-        });
-        // Status color bar
-        slide.addShape(pres.shapes.RECTANGLE, {
-          x: CARD_X, y: cardY, w: 0.1, h: cardH,
-          fill: { color: scol }, line: { color: scol, pt: 0 },
-        });
-
-        const cx = CARD_X + 0.22;
-
-        // Milestone title
-        slide.addText(`${icon}  ${item.milestone || ''}`, {
-          x: cx, y: cardY + 0.18, w: CARD_W - 1.0, h: 0.42,
-          fontSize: 15, color: INK, fontFace: 'Arial', bold: true, margin: 0,
-        });
-
-        // Status pill
-        slide.addShape(pres.shapes.RECTANGLE, {
-          x: CARD_X + CARD_W - 1.55, y: cardY + 0.2, w: 1.35, h: 0.35,
-          fill: { color: scol, transparency: 75 },
-          line: { color: scol, pt: 0.5 },
-        });
-        slide.addText(`● ${slabel}`, {
-          x: CARD_X + CARD_W - 1.55, y: cardY + 0.2, w: 1.35, h: 0.35,
-          fontSize: 9, color: INK, fontFace: 'Arial',
-          bold: true, align: 'center', valign: 'middle', margin: 0,
-        });
-
-        // JIRA IDs
+      const dataRows = batch.map((item, idx) => {
+        const icon  = ICON_MAP[item.icon] || '●';
+        const scol  = STATUS_COLORS[item.status_color] || '888888';
+        const slabel = STATUS_LABELS[item.status_color] || item.status_color?.toUpperCase() || '';
+        const fillC = idx % 2 === 0 ? ROW_ODD : ROW_EVEN;
         const jiras = (item.jiras || []).join('  ·  ');
+
+        // Left cell: icon + title + JIRA IDs
+        const leftParts = [
+          { text: icon + '  ', options: { fontSize: 13, fontFace: 'Calibri', color: DARK } },
+          { text: (item.milestone || '') + '\n', options: { fontSize: 11, bold: true, color: DARK, fontFace: 'Calibri' } },
+        ];
         if (jiras) {
-          slide.addText(jiras, {
-            x: cx, y: cardY + 0.63, w: CARD_W - 0.5, h: 0.26,
-            fontSize: 9, color: ACC, fontFace: 'Arial', bold: true, margin: 0,
-          });
+          leftParts.push({ text: jiras, options: { fontSize: 9, bold: true, color: ACC, fontFace: 'Calibri' } });
         }
 
-        // Status text with bold markers
-        const statusParts = parseBoldText(item.status_text || '', 'b0b0c8', 11);
-        slide.addText(statusParts, {
-          x: cx, y: cardY + 0.93, w: CARD_W - 0.5, h: cardH - 2.05,
-          fontSize: 11, fontFace: 'Arial', wrap: true, valign: 'top', margin: 0,
-        });
+        // Right cell: status label + status text + next steps
+        const rightParts = [
+          { text: `● ${slabel}  `, options: { fontSize: 10, bold: true, color: scol, fontFace: 'Calibri' } },
+          { text: '\n', options: { fontSize: 6, fontFace: 'Calibri', color: WHITE } },
+          ...parseRichText((item.status_text || ''), 10),
+          { text: '\n', options: { fontSize: 5, fontFace: 'Calibri', color: WHITE } },
+          { text: 'Next Steps: ', options: { fontSize: 10, bold: true, color: ACC, fontFace: 'Calibri' } },
+          { text: item.next_steps || '', options: { fontSize: 10, color: MUTED_TXT, fontFace: 'Calibri' } },
+        ];
 
-        // Next steps section
-        const nsY = cardY + cardH - 0.88;
-        slide.addShape(pres.shapes.RECTANGLE, {
-          x: cx, y: nsY, w: CARD_W - 0.45, h: 0.78,
-          fill: { color: '0d0d14' },
-          line: { color: BORDER, pt: 0.5 },
-        });
-        slide.addText('NEXT STEPS', {
-          x: cx + 0.08, y: nsY + 0.06, w: 1.5, h: 0.22,
-          fontSize: 8, color: ACC, fontFace: 'Arial',
-          bold: true, margin: 0,
-        });
-        slide.addText(item.next_steps || '', {
-          x: cx + 0.08, y: nsY + 0.28, w: CARD_W - 0.65, h: 0.44,
-          fontSize: 10, color: MUTED, fontFace: 'Arial', wrap: true, margin: 0,
-        });
+        return [
+          { text: leftParts, options: { fill: { color: fillC }, valign: 'middle', margin: [4, 6, 4, 8] } },
+          { text: rightParts, options: { fill: { color: fillC }, valign: 'top',   margin: [6, 8, 4, 8] } },
+        ];
+      });
+
+      slide.addTable([headerRow, ...dataRows], {
+        x: 0.3, y: tableY,
+        w: LEFT_W + RIGHT_W,
+        colW: [LEFT_W, RIGHT_W],
+        rowH: [0.42, ...batch.map(() => ROW_H)],
+        border: { color: BORDER_C, pt: 0.5 },
+        fontFace: 'Calibri',
       });
     }
 

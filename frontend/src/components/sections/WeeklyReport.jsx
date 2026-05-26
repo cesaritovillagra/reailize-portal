@@ -1,7 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api, apiBlob, T } from '../../App.jsx';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+function formatDateDisplay(isoStr, lang) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return isoStr;
+  const day   = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year  = String(d.getFullYear()).slice(-2);
+  return lang === 'en' ? `${month}/${day}/${year}` : `${day}/${month}/${year}`;
+}
+
+function DateField({ value, onChange, lang }) {
+  const pickerRef = useRef(null);
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <div style={{
+        background: '#13131a', border: '1px solid #2a2a38',
+        color: '#f0f0f5', padding: '6px 32px 6px 10px',
+        borderRadius: 8, fontSize: 13,
+        fontFamily: 'Inter, sans-serif',
+        whiteSpace: 'nowrap', minWidth: 110,
+      }}>
+        {formatDateDisplay(value, lang)}
+      </div>
+      <input
+        ref={pickerRef}
+        type="date"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+        tabIndex={-1}
+      />
+      <button
+        type="button"
+        onClick={() => pickerRef.current?.showPicker()}
+        style={{
+          position: 'absolute', right: 7,
+          background: 'none', border: 'none',
+          cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1,
+          color: '#6b6b80', display: 'flex', alignItems: 'center',
+        }}
+        title={lang === 'en' ? 'Pick a date' : 'Elegir fecha'}
+      >📅</button>
+    </div>
+  );
+}
 
 function getDefaultDates() {
   const today = new Date();
@@ -15,6 +61,25 @@ function getDefaultDates() {
     from: prevWed.toISOString().slice(0, 10),
     to:   lastWed.toISOString().slice(0, 10),
   };
+}
+
+function RichText({ text }) {
+  if (!text) return null;
+  const parts = [];
+  const regex = /(\*\*(.*?)\*\*|→\s*COMPLETED\.?|COMPLETED\.?)/g;
+  let last = 0, match, key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last)
+      parts.push(<span key={key++} style={{ color: '#444' }}>{text.slice(last, match.index)}</span>);
+    if (match[2])
+      parts.push(<strong key={key++} style={{ color: '#1A1A1A' }}>{match[2]}</strong>);
+    else
+      parts.push(<strong key={key++} style={{ color: '#F40085' }}>{match[0]}</strong>);
+    last = regex.lastIndex;
+  }
+  if (last < text.length)
+    parts.push(<span key={key++} style={{ color: '#444' }}>{text.slice(last)}</span>);
+  return <>{parts}</>;
 }
 
 function BoldText({ text, baseStyle }) {
@@ -347,11 +412,9 @@ export default function WeeklyReport({ user, project, lang }) {
       }}>
         <span style={{ fontSize: 12, color: T.MUTED, fontFamily: 'Space Grotesk, sans-serif',
           letterSpacing: 0.5, whiteSpace: 'nowrap' }}>PERIOD</span>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          style={dateInputStyle} />
+        <DateField value={dateFrom} onChange={setDateFrom} lang={lang} />
         <span style={{ color: T.MUTED, fontSize: 13 }}>→</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          style={dateInputStyle} />
+        <DateField value={dateTo} onChange={setDateTo} lang={lang} />
         <div style={{ flex: 1 }} />
         <button onClick={loadTickets} disabled={loading}
           style={btnStyle(loading)}>
@@ -388,29 +451,14 @@ export default function WeeklyReport({ user, project, lang }) {
             }
           </Section>
 
-          {/* Carry-over tickets */}
-          <Section
-            title="Carry-Over Tickets"
-            subtitle="Older open / in-progress tickets"
-            count={tickets.carryover.length}
-            includedCount={includedCarryover}
-            accent={T.WARN}
-          >
-            {tickets.carryover.length === 0
-              ? <Empty text="No hay tickets carry-over." />
-              : tickets.carryover.map(t => (
-                  <TicketRow key={t.id} ticket={t} onToggleExclude={toggleExclude} />
-                ))
-            }
-          </Section>
 
           {/* Generate button */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-            <button onClick={generateReport} disabled={generating || (!includedPeriod && !includedCarryover)}
-              style={btnStyle(generating || (!includedPeriod && !includedCarryover), true)}>
+            <button onClick={generateReport} disabled={generating || !includedPeriod}
+              style={btnStyle(generating || !includedPeriod, true)}>
               {generating
                 ? <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⚙️</span> Generando con Claude…</>
-                : `✨ Generate Report (${includedPeriod + includedCarryover} tickets)`}
+                : `✨ Generate Report (${includedPeriod} tickets)`}
             </button>
           </div>
         </div>
@@ -427,88 +475,95 @@ export default function WeeklyReport({ user, project, lang }) {
         </div>
       )}
 
-      {/* ── Report output ── */}
+      {/* ── Report output — tabla idéntica al PPT ── */}
       {report && (
         <div>
-          {/* Report header */}
-          <div style={{
-            background: T.PANEL2, border: `1px solid ${T.BORDER}`,
-            borderRadius: 10, padding: '1.2rem 1.4rem',
-            marginBottom: 20,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
-              <div>
-                <div style={{ fontSize: 11, color: T.MUTED, letterSpacing: 0.8,
-                  fontFamily: 'Space Grotesk, sans-serif', marginBottom: 4 }}>EXECUTIVE SUMMARY</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.INK,
-                  fontFamily: 'Space Grotesk, sans-serif' }}>
-                  {report.period_label}
-                </div>
+          {/* Toolbar: período + export */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontSize: 13, color: T.MUTED, fontFamily: 'Space Grotesk, sans-serif' }}>
+              <span style={{ color: T.INK, fontWeight: 700 }}>Weekly Status Report</span>
+              {'  ·  '}{report.period_label}
+            </div>
+            <button onClick={exportPPTX} disabled={exporting}
+              style={btnStyle(exporting, true)}>
+              {exporting ? '⏳ Exportando…' : '⬇ Export PPTX'}
+            </button>
+          </div>
+
+          {/* Tabla */}
+          <div style={{ border: '1px solid #E0A0CC', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+            {/* Header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '32% 68%', background: '#F40085' }}>
+              <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#fff',
+                fontFamily: 'Calibri, sans-serif', textAlign: 'center', letterSpacing: 0.5,
+                borderRight: '1px solid rgba(255,255,255,0.3)' }}>
+                MILESTONE / ACTIVITY
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {/* Overall status badge */}
-                <div style={{
-                  padding: '5px 14px', borderRadius: 20,
-                  background: `${overallCol}18`,
-                  border: `1px solid ${overallCol}55`,
-                  fontSize: 12, fontWeight: 700,
-                  color: overallCol,
-                  fontFamily: 'Space Grotesk, sans-serif',
-                }}>
-                  ● {report.overall_status?.toUpperCase()}
-                </div>
-                {/* Export button */}
-                <button onClick={exportPPTX} disabled={exporting}
-                  style={{
-                    background: exporting ? T.PANEL : 'rgba(244,0,133,0.12)',
-                    border: `1px solid ${T.ACCENT}`,
-                    color: T.ACCENT,
-                    padding: '5px 14px', borderRadius: 20,
-                    fontSize: 12, fontWeight: 700, cursor: exporting ? 'not-allowed' : 'pointer',
-                    fontFamily: 'Space Grotesk, sans-serif',
-                    opacity: exporting ? 0.6 : 1,
-                    transition: 'all 0.15s',
-                  }}>
-                  {exporting ? '⏳ Exportando…' : '⬇ Export PPTX'}
-                </button>
+              <div style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: '#fff',
+                fontFamily: 'Calibri, sans-serif', textAlign: 'center', letterSpacing: 0.5 }}>
+                STATUS / NEXT STEPS
               </div>
             </div>
 
-            {/* Summary text */}
-            <p style={{
-              margin: 0, fontSize: 13, lineHeight: 1.7,
-              color: 'rgba(240,240,245,0.8)',
-              fontFamily: 'Inter, sans-serif',
-            }}>
-              {report.overall_summary}
-            </p>
+            {/* Rows */}
+            {report.initiatives?.map((item, i) => {
+              const scol  = STATUS_COLORS[item.status_color] || '#888';
+              const slabel = STATUS_LABELS[item.status_color] || item.status_color?.toUpperCase() || '';
+              const icon  = ICONS[item.icon] || '●';
+              const rowBg = i % 2 === 0 ? '#ffffff' : '#FDE8F4';
+
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '32% 68%',
+                  background: rowBg, borderTop: '1px solid #E0A0CC' }}>
+
+                  {/* Left: milestone + JIRA */}
+                  <div style={{ padding: '12px 14px', borderRight: '1px solid #E0A0CC' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 16, lineHeight: 1.2, flexShrink: 0 }}>{icon}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A',
+                        fontFamily: 'Calibri, sans-serif', lineHeight: 1.4 }}>
+                        {item.milestone}
+                      </span>
+                    </div>
+                    {item.jiras?.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 24 }}>
+                        {item.jiras.map(j => (
+                          <span key={j} style={{ fontSize: 11, fontWeight: 700, color: '#F40085',
+                            fontFamily: 'Calibri, sans-serif' }}>{j}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: status + text + next steps */}
+                  <div style={{ padding: '10px 14px' }}>
+                    {/* Status label */}
+                    <div style={{ fontSize: 11, fontWeight: 700, color: scol,
+                      fontFamily: 'Calibri, sans-serif', marginBottom: 5 }}>
+                      ● {slabel}
+                    </div>
+                    {/* Status text with rich formatting */}
+                    <div style={{ fontSize: 12, color: '#444', fontFamily: 'Calibri, sans-serif',
+                      lineHeight: 1.55, marginBottom: 6 }}>
+                      <RichText text={item.status_text || ''} />
+                    </div>
+                    {/* Next steps */}
+                    {item.next_steps && (
+                      <div style={{ fontSize: 12, color: '#444', fontFamily: 'Calibri, sans-serif', lineHeight: 1.5 }}>
+                        <span style={{ fontWeight: 700, color: '#F40085' }}>Next Steps: </span>
+                        {item.next_steps}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
-            {Object.entries(STATUS_LABELS).map(([key, label]) => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: STATUS_COLORS[key], flexShrink: 0,
-                }} />
-                <span style={{ fontSize: 11, color: T.MUTED, fontFamily: 'Space Grotesk, sans-serif' }}>
-                  {label}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Initiatives */}
-          {report.initiatives?.map((item, i) => (
-            <InitiativeCard key={i} item={item} />
-          ))}
-
-          {/* Bottom export button */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-            <button onClick={exportPPTX} disabled={exporting}
-              style={btnStyle(exporting, true)}>
+          {/* Bottom export */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+            <button onClick={exportPPTX} disabled={exporting} style={btnStyle(exporting, true)}>
               {exporting ? '⏳ Exportando…' : '⬇ Export to PowerPoint'}
             </button>
           </div>
@@ -524,13 +579,6 @@ export default function WeeklyReport({ user, project, lang }) {
 
 // ─── style helpers ────────────────────────────────────────────────────────────
 
-const dateInputStyle = {
-  background: '#13131a', border: '1px solid #2a2a38',
-  color: '#f0f0f5', padding: '6px 10px', borderRadius: 8,
-  fontSize: 13, fontFamily: 'Inter, sans-serif', outline: 'none',
-  cursor: 'pointer',
-  colorScheme: 'dark',
-};
 
 function btnStyle(disabled, primary = false) {
   return {

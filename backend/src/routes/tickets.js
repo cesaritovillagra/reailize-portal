@@ -13,7 +13,7 @@ TASK STRUCTURE — fill ALL fields:
 ═══════════════════════════════════════════
 - task_id: will be assigned by the system (do not generate)
 - jira_id: extract from input if present (format: CTAP-XXXXX or similar)
-- date_created: extract from input (YYYY-MM-DD) — use the OPENING date, NEVER placeholders
+- date_created: USE TODAY'S DATE (provided below) by default. ONLY override if the user explicitly writes something like "fecha de creación: XX/XX/XX" or "date created: XX/XX/XX" in the input text. NEVER extract a date from the JIRA ticket body or description — only use an explicitly instructed date override.
 - category: classify the ticket
 - environment: extract or infer (e.g., CHF, Lab, Production, Pre-prod)
 - status: Open | In Progress | On Hold | Escalated | Blocked | Closed
@@ -143,6 +143,7 @@ Respond ONLY with a valid JSON object with all the fields listed in TASK STRUCTU
 
 async function autoCompleteTicket(rawInput, lang) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const today = new Date().toISOString().slice(0, 10);
   const langInstruction = lang === 'en'
     ? '\n\nIMPORTANT: All text fields in the JSON output (description, current_situation, impact, value_added, next_steps, governance, strategic_relevance, key_technical_insight) MUST be written in English. If the input is in Spanish or any other language, translate everything to English.'
     : '';
@@ -151,7 +152,7 @@ async function autoCompleteTicket(rawInput, lang) {
     max_tokens: 2000,
     messages: [{
       role: 'user',
-      content: `${QBR_METHODOLOGY}${langInstruction}\n\nHere is the partial ticket information:\n\n${rawInput}\n\nReturn the completed ticket as JSON.`
+      content: `${QBR_METHODOLOGY}${langInstruction}\n\nTODAY'S DATE: ${today} — use this as the default value for date_created unless the input explicitly overrides it.\n\nHere is the partial ticket information:\n\n${rawInput}\n\nReturn the completed ticket as JSON.`
     }]
   });
   const text = message.content[0].text;
@@ -243,12 +244,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
   const t = req.body;
   try {
     await pool.query(
-      `UPDATE tickets SET jira_id=$1, date_closed=$2, category=$3, environment=$4, status=$5,
-        description=$6, current_situation=$7, impact=$8, value_added=$9, next_steps=$10,
-        governance=$11, strategic_relevance=$12, key_technical_insight=$13, led_by=$14,
-        tier1_involvement=$15, problem_type=$16, network_functions=$17, updated_at=NOW()
-       WHERE id=$18 AND user_id=$19`,
-      [t.jira_id, t.date_closed || null, t.category, t.environment, t.status,
+      `UPDATE tickets SET jira_id=$1, date_created=$2, date_closed=$3, category=$4, environment=$5, status=$6,
+        description=$7, current_situation=$8, impact=$9, value_added=$10, next_steps=$11,
+        governance=$12, strategic_relevance=$13, key_technical_insight=$14, led_by=$15,
+        tier1_involvement=$16, problem_type=$17, network_functions=$18, updated_at=NOW()
+       WHERE id=$19 AND user_id=$20`,
+      [t.jira_id, t.date_created || null, t.date_closed || null, t.category, t.environment, t.status,
        t.description, t.current_situation, t.impact, t.value_added, t.next_steps,
        t.governance, t.strategic_relevance, t.key_technical_insight, t.led_by,
        t.tier1_involvement, t.problem_type, t.network_functions, req.params.id, req.user.id]

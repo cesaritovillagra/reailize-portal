@@ -32,6 +32,48 @@ function parseToISO(input, lang) {
   }
   return input;
 }
+function DateField({ value, onChange, lang, style }) {
+  const pickerRef = useRef(null);
+  // value stored internally as YYYY-MM-DD
+  const isoVal     = value ? (value.slice(0,10)) : '';
+  const displayVal = value ? formatDate(value, lang) : '';
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+      <input
+        value={displayVal}
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onChange(parseToISO(e.target.value, lang))}
+        placeholder={lang === 'en' ? 'MM/DD/YY' : 'DD/MM/YY'}
+        style={{ ...style, paddingRight: 34 }}
+      />
+      {/* Hidden native date picker */}
+      <input
+        ref={pickerRef}
+        type="date"
+        value={isoVal}
+        onChange={e => onChange(e.target.value)}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0, top: 0, right: 0 }}
+        tabIndex={-1}
+      />
+      {/* Calendar icon button */}
+      <button
+        type="button"
+        onClick={() => pickerRef.current?.showPicker()}
+        style={{
+          position: 'absolute', right: 8,
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: '#6b6b80', fontSize: 15, padding: 0, lineHeight: 1,
+          display: 'flex', alignItems: 'center',
+        }}
+        title={lang === 'en' ? 'Pick a date' : 'Elegir fecha'}
+      >
+        📅
+      </button>
+    </div>
+  );
+}
+
 const PROBLEM_TYPES = ['application','infrastructure','observability','configuration','replication','failover','working_as_designed','transient'];
 const FIELDS = [
   { key: 'description',           label: 'Description'            },
@@ -173,27 +215,27 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: '1.2rem' }}>
           {[
             { key: 'jira_id',      label: 'JIRA ID' },
-            { key: 'date_created', label: lang === 'es' ? 'Fecha creación' : 'Created date' },
-            { key: 'date_closed',  label: lang === 'es' ? 'Fecha cierre' : 'Closed date' },
+            { key: 'date_created', label: lang === 'es' ? 'Fecha creación' : 'Created date', isDate: true },
+            { key: 'date_closed',  label: lang === 'es' ? 'Fecha cierre' : 'Closed date',   isDate: true },
             { key: 'category',     label: t(lang, 'category') },
             { key: 'environment',  label: t(lang, 'environment') },
           ].map(f => (
             <div key={f.key}>
               <label style={labelStyle}>{f.label.toUpperCase()}</label>
-              <input
-                value={['date_created','date_closed'].includes(f.key)
-                  ? formatDate(form[f.key], lang)
-                  : (form[f.key] || '')}
-                onChange={e => set(f.key, ['date_created','date_closed'].includes(f.key)
-                  ? e.target.value
-                  : e.target.value)}
-                onBlur={e => { if (['date_created','date_closed'].includes(f.key))
-                  set(f.key, parseToISO(e.target.value, lang)); }}
-                placeholder={['date_created','date_closed'].includes(f.key)
-                  ? (lang === 'en' ? 'MM/DD/YY' : 'DD/MM/YY')
-                  : ''}
-                style={inputStyle}
-              />
+              {f.isDate ? (
+                <DateField
+                  value={form[f.key] || ''}
+                  onChange={val => set(f.key, val)}
+                  lang={lang}
+                  style={inputStyle}
+                />
+              ) : (
+                <input
+                  value={form[f.key] || ''}
+                  onChange={e => set(f.key, e.target.value)}
+                  style={inputStyle}
+                />
+              )}
             </div>
           ))}
           <div>
