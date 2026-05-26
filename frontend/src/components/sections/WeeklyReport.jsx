@@ -35,15 +35,15 @@ function BoldText({ text, baseStyle }) {
 
 const STATUS_COLORS = {
   blue:   '#3B82F6',
-  green:  T.SUCCESS,
-  orange: T.WARN,
-  red:    T.DANGER,
+  green:  '#00d084',
+  orange: '#ffb800',
+  red:    '#ff4444',
 };
 const OVERALL_COLORS = {
-  Green:  T.SUCCESS,
-  Yellow: T.WARN,
+  Green:  '#00d084',
+  Yellow: '#ffb800',
   Orange: '#FF8C00',
-  Red:    T.DANGER,
+  Red:    '#ff4444',
 };
 const STATUS_LABELS = {
   blue:   'COMPLETED',
@@ -525,8 +525,8 @@ export default function WeeklyReport({ user, project, lang }) {
 // ─── style helpers ────────────────────────────────────────────────────────────
 
 const dateInputStyle = {
-  background: T.PANEL, border: `1px solid ${T.BORDER}`,
-  color: T.INK, padding: '6px 10px', borderRadius: 8,
+  background: '#13131a', border: '1px solid #2a2a38',
+  color: '#f0f0f5', padding: '6px 10px', borderRadius: 8,
   fontSize: 13, fontFamily: 'Inter, sans-serif', outline: 'none',
   cursor: 'pointer',
   colorScheme: 'dark',
