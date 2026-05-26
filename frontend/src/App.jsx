@@ -11,6 +11,7 @@ import QBRGenerator from './components/sections/QBRGenerator.jsx';
 import UserProfile  from './components/sections/UserProfile.jsx';
 import UserAdmin    from './components/sections/UserAdmin.jsx';
 import Projects     from './components/sections/Projects.jsx';
+import WeeklyReport from './components/sections/WeeklyReport.jsx';
 
 // ── Design tokens ──────────────────────────────────────────
 export const T = {
@@ -161,6 +162,7 @@ export default function App() {
       case 'qbrgen':   return <QBRGenerator  user={user} project={project} lang={lang} />;
       case 'profile':  return <UserProfile   user={user} onUpdate={u => { setUser(u); setLang(u.language || 'es'); }} onLogout={handleLogout} lang={lang} />;
       case 'admin':    return <UserAdmin     user={user} lang={lang} />;
+      case 'weekly':   return <WeeklyReport  user={user} project={project} lang={lang} />;
       default:         return <Projects      user={user} project={project} setProject={setProject} lang={lang} />;
     }
   };
