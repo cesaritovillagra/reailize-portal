@@ -208,6 +208,7 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
 function FileUploadTab({ project, lang, onTicketsSaved }) {
   const fileRef            = useRef();
   const [rows, setRows]    = useState(null);   // parsed rows from backend
+  const [isTxt, setIsTxt]  = useState(false);
   const [fileName, setFileName] = useState('');
   const [parsing, setParsing]   = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -233,6 +234,7 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al parsear');
       setRows(data.rows);
+      setIsTxt(data.isTxt || false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -274,7 +276,7 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
   };
 
   const reset = () => {
-    setRows(null); setFileName(''); setDone(false); setError('');
+    setRows(null); setIsTxt(false); setFileName(''); setDone(false); setError('');
     setProgress({ done: 0, total: 0, errors: 0 });
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -301,16 +303,16 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
           </h3>
           <p style={{ color: T.MUTED, fontSize: 13, marginBottom: '1.2rem', lineHeight: 1.6 }}>
             {lang === 'es'
-              ? 'Seleccioná un archivo CSV o Excel. El sistema va a parsear cada fila y procesarla con Claude automáticamente.'
-              : 'Select a CSV or Excel file. The system will parse each row and process it with Claude automatically.'}
+              ? 'Seleccioná un archivo CSV, Excel o TXT. El sistema procesará cada ticket con Claude automáticamente.'
+              : 'Select a CSV, Excel or TXT file. The system will process each ticket with Claude automatically.'}
           </p>
           <button onClick={() => fileRef.current.click()} className="btn-primary"
             style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem',
               color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14 }}>
             {lang === 'es' ? '📎 Elegir archivo' : '📎 Choose file'}
           </button>
-          <span style={{ color: T.MUTED, fontSize: 11, marginLeft: 12 }}>CSV, XLS, XLSX</span>
-          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
+          <span style={{ color: T.MUTED, fontSize: 11, marginLeft: 12 }}>CSV, XLS, XLSX, TXT</span>
+          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.txt" style={{ display: 'none' }} onChange={handleFile} />
         </div>
       )}
 
@@ -340,44 +342,54 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
             </button>
           </div>
 
-          {/* Preview table */}
-          <div style={{ overflowX: 'auto', marginBottom: '1.2rem', borderRadius: 8,
-            border: `1px solid ${T.BORDER}`, maxHeight: 280, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: T.PANEL2, borderBottom: `1px solid ${T.BORDER}` }}>
-                  {cols.map(c => (
-                    <th key={c} style={{ padding: '0.5rem 0.8rem', textAlign: 'left', color: T.MUTED,
-                      fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {c}
-                    </th>
-                  ))}
-                  {Object.keys(rows[0] || {}).length > 6 && (
-                    <th style={{ padding: '0.5rem 0.8rem', color: T.MUTED }}>…</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, 10).map((row, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.BORDER}33` }}>
+          {/* Preview — TXT: show raw text; CSV/Excel: show table */}
+          {isTxt ? (
+            <div style={{ marginBottom: '1.2rem', borderRadius: 8, border: `1px solid ${T.BORDER}`,
+              maxHeight: 280, overflowY: 'auto', background: T.PANEL2 }}>
+              <pre style={{ margin: 0, padding: '0.8rem 1rem', fontSize: 12, color: T.INK,
+                fontFamily: 'Inter, sans-serif', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {rows[0]?.raw_input || ''}
+              </pre>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', marginBottom: '1.2rem', borderRadius: 8,
+              border: `1px solid ${T.BORDER}`, maxHeight: 280, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: T.PANEL2, borderBottom: `1px solid ${T.BORDER}` }}>
                     {cols.map(c => (
-                      <td key={c} style={{ padding: '0.45rem 0.8rem', color: T.INK,
-                        fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap',
-                        maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {String(row[c] ?? '')}
-                      </td>
+                      <th key={c} style={{ padding: '0.5rem 0.8rem', textAlign: 'left', color: T.MUTED,
+                        fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {c}
+                      </th>
                     ))}
+                    {Object.keys(rows[0] || {}).length > 6 && (
+                      <th style={{ padding: '0.5rem 0.8rem', color: T.MUTED }}>…</th>
+                    )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {rows.length > 10 && (
-              <div style={{ padding: '0.5rem 0.8rem', color: T.MUTED, fontSize: 11, textAlign: 'center',
-                borderTop: `1px solid ${T.BORDER}` }}>
-                {lang === 'es' ? `… y ${rows.length - 10} filas más` : `… and ${rows.length - 10} more rows`}
-              </div>
-            )}
-          </div>
+                </thead>
+                <tbody>
+                  {rows.slice(0, 10).map((row, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.BORDER}33` }}>
+                      {cols.map(c => (
+                        <td key={c} style={{ padding: '0.45rem 0.8rem', color: T.INK,
+                          fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap',
+                          maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {String(row[c] ?? '')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {rows.length > 10 && (
+                <div style={{ padding: '0.5rem 0.8rem', color: T.MUTED, fontSize: 11, textAlign: 'center',
+                  borderTop: `1px solid ${T.BORDER}` }}>
+                  {lang === 'es' ? `… y ${rows.length - 10} filas más` : `… and ${rows.length - 10} more rows`}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ background: `rgba(244,0,133,0.06)`, border: `1px solid rgba(244,0,133,0.2)`,
             borderRadius: 8, padding: '0.8rem 1rem', fontSize: 13, color: T.INK, marginBottom: '1.2rem' }}>

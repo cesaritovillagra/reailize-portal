@@ -155,7 +155,8 @@ async function autoCompleteTicket(rawInput, lang) {
     }]
   });
   const text = message.content[0].text;
-  return JSON.parse(text);
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  return JSON.parse(cleaned);
 }
 
 async function getNextTaskId(date) {
@@ -183,8 +184,8 @@ router.get('/', authMiddleware, async (req, res) => {
     let params = [req.user.id, project_id];
     let idx = 3;
 
-    if (date_from) { conditions.push(`created_at >= $${idx}::date`); params.push(date_from); idx++; }
-    if (date_to)   { conditions.push(`created_at <= ($${idx}::date + interval '1 day')`); params.push(date_to); idx++; }
+    if (date_from) { conditions.push(`date_created >= $${idx}::date`); params.push(date_from); idx++; }
+    if (date_to)   { conditions.push(`date_created <= ($${idx}::date + interval '1 day')`); params.push(date_to); idx++; }
     if (status)    { conditions.push(`status = $${idx}`); params.push(status); idx++; }
     if (jira_id)   { conditions.push(`LOWER(jira_id) LIKE LOWER($${idx})`); params.push(`%${jira_id}%`); idx++; }
 

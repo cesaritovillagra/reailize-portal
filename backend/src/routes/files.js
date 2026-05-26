@@ -36,11 +36,17 @@ router.post('/parse', authMiddleware, upload.single('file'), (req, res) => {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
+    } else if (ext === 'txt') {
+      const text = req.file.buffer.toString('utf-8').trim();
+      if (!text) return res.json({ rows: [], count: 0, isTxt: true });
+      rows = [{ raw_input: text }];
+      return res.json({ rows, count: rows.length, isTxt: true });
+
     } else {
-      return res.status(400).json({ error: 'Formato no soportado. Usá CSV o Excel (.xlsx / .xls)' });
+      return res.status(400).json({ error: 'Formato no soportado. Usá CSV, Excel (.xlsx / .xls) o TXT.' });
     }
 
-    res.json({ rows, count: rows.length });
+    res.json({ rows, count: rows.length, isTxt: false });
 
   } catch (err) {
     console.error('Error parsing file:', err);

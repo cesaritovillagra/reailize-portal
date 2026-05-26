@@ -160,7 +160,8 @@ ${carryover_tickets.length ? formatTickets(carryover_tickets) : 'None'}
     });
 
     const text = message.content[0].text;
-    const report = JSON.parse(text);
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    const report = JSON.parse(cleaned);
     res.json(report);
   } catch (err) {
     console.error(err);
