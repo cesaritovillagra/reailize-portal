@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { T, api, apiBlob } from '../../App.jsx';
 import { t } from '../../i18n.js';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import QBRConfig from './QBRConfig.jsx';
 
 const CHART_COLORS = ['#F40085','#7AD0E2','#00d084','#ffb800','#AFAEAF','#4D4D4D'];
 
@@ -18,6 +19,7 @@ function ChartCard({ title, children }) {
 }
 
 export default function QBRGenerator({ user, project, lang }) {
+  const [qbrTab, setQbrTab] = useState('generate'); // 'generate' | 'methodology'
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [generating, setGenerating] = useState(false);
@@ -81,12 +83,38 @@ export default function QBRGenerator({ user, project, lang }) {
 
   return (
     <div className="fadeUp">
+      {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: T.INK, marginBottom: 4 }}>
           {t(lang, 'qbrGeneratorTitle')}
         </h1>
         <div style={{ color: T.MUTED, fontSize: 13 }}>{t(lang, 'project')}: <span style={{ color: T.ACCENT }}>{project.name}</span></div>
       </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', borderBottom: `1px solid ${T.BORDER}` }}>
+        {[
+          ['generate',    lang === 'es' ? '📊 Generar QBR'     : '📊 Generate QBR'],
+          ['methodology', lang === 'es' ? '⚙️ Formato de QBRs' : '⚙️ QBR Format'],
+        ].map(([key, label]) => (
+          <div key={key} onClick={() => setQbrTab(key)}
+            style={{ padding: '0.6rem 1.2rem', fontSize: 14, cursor: 'pointer',
+              fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
+              color: qbrTab === key ? T.ACCENT : T.MUTED,
+              borderBottom: qbrTab === key ? `2px solid ${T.ACCENT}` : '2px solid transparent',
+              marginBottom: -1, transition: 'all 0.15s' }}>
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {/* Metodología QBR tab */}
+      {qbrTab === 'methodology' && (
+        <QBRConfig user={user} project={project} lang={lang} />
+      )}
+
+      {/* Generar QBR tab */}
+      {qbrTab === 'generate' && <>
 
       {/* Date selector */}
       <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
@@ -215,6 +243,7 @@ export default function QBRGenerator({ user, project, lang }) {
           </div>
         </div>
       )}
+    </>}
     </div>
   );
 }

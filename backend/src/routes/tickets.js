@@ -11,7 +11,7 @@ You are an expert TPM assistant for César Villagra. Your job is to take partial
 ═══════════════════════════════════════════
 TASK STRUCTURE — fill ALL fields:
 ═══════════════════════════════════════════
-- task_id: will be assigned by the system (do not generate)
+- task_id: if the input contains a Task ID (e.g. "Task ID: 2026-05-14-00036"), extract and return it exactly as-is. If no Task ID is present in the input, return null and the system will assign one automatically.
 - jira_id: extract from input if present (format: CTAP-XXXXX or similar)
 - date_created: USE TODAY'S DATE (provided below) by default. ONLY override if the user explicitly writes something like "fecha de creación: XX/XX/XX" or "date created: XX/XX/XX" in the input text. NEVER extract a date from the JIRA ticket body or description — only use an explicitly instructed date override.
 - category: classify the ticket
@@ -25,6 +25,7 @@ TASK STRUCTURE — fill ALL fields:
 - governance: see rules below
 - strategic_relevance: see rules below
 - key_technical_insight: see rules below
+- rca: Root Cause Analysis — MANDATORY for closed tickets (status = Closed). For open/in-progress tickets, populate if root cause is already confirmed or strongly evidenced, otherwise leave as empty string. When populated, write a concise executive-level RCA (1-3 sentences max). Extract RCA information from the input — look for fields labeled "RCA", "Root Cause", "Root Cause Analysis", or any section describing the confirmed cause and resolution. Example: "Root cause confirmed: missing MT CHF routes on FEXN caused by misconfigured interface on redwa100gfw01 FW. Issue resolved after FW team corrected the routing configuration."
 - problem_type: application | infrastructure | observability | configuration | replication | failover | working_as_designed | transient
 - network_functions: array of NFs involved — auto-detect from input. Known NFs: CHF, PCF, SMF, UPF, UDM, BSF, SBC, ACC, Kafka, Cookies, HSS, CNRO, Infrastructure, FEXN, GLS, ISBUS
 - led_by: "César Villagra" or "Tier 1"
@@ -141,23 +142,48 @@ All wording must be Director-Level, not operational.
 Respond ONLY with a valid JSON object with all the fields listed in TASK STRUCTURE. No markdown, no explanation, no code blocks.
 `;
 
-async function autoCompleteTicket(rawInput, lang) {
+async function getTicketGuide(userId, projectId) {
+  try {
+    const result = await pool.query(
+      'SELECT content FROM ticket_guide WHERE user_id=$1 AND project_id=$2',
+      [userId, projectId]
+    );
+    return result.rows.length > 0 ? result.rows[0].content : '';
+  } catch {
+    return '';
+  }
+}
+
+async function autoCompleteTicket(rawInput, lang, userId, projectId) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const today = new Date().toISOString().slice(0, 10);
-  const langInstruction = lang === 'en'
-    ? '\n\nIMPORTANT: All text fields in the JSON output (description, current_situation, impact, value_added, next_steps, governance, strategic_relevance, key_technical_insight) MUST be written in English. If the input is in Spanish or any other language, translate everything to English.'
+
+  // Load user's ticket guide from DB
+  const guide = await getTicketGuide(userId, projectId);
+  const guideSection = guide?.trim()
+    ? `\n\n═══════════════════════════════════════════\nUSER-DEFINED PROCESSING GUIDE (apply these rules with highest priority):\n═══════════════════════════════════════════\nNOTE: These instructions are written as a dialogue where "YO" = the user (César) and "VOS" = Claude. Read them as directives and apply them as rules. Do NOT reproduce this dialogue format in your output — the output must always be clean, professional, executive-level content.\n\n${guide}\n`
     : '';
+
+  const langInstruction = lang === 'en'
+    ? '\n\nIMPORTANT: All text fields in the JSON output MUST be written in English. If the input is in Spanish or any other language, translate everything to English.'
+    : '';
+
   const message = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 2000,
+    max_tokens: 8000,
     messages: [{
       role: 'user',
-      content: `${QBR_METHODOLOGY}${langInstruction}\n\nTODAY'S DATE: ${today} — use this as the default value for date_created unless the input explicitly overrides it.\n\nHere is the partial ticket information:\n\n${rawInput}\n\nReturn the completed ticket as JSON.`
+      content: `${QBR_METHODOLOGY}${guideSection}${langInstruction}\n\nTODAY'S DATE: ${today} — use this as the default value for date_created unless the input explicitly overrides it.\n\nHere is the partial ticket information:\n\n${rawInput}\n\nReturn the completed ticket as JSON.`
     }]
   });
   const text = message.content[0].text;
   const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error('JSON parse error. Claude response was:', text.slice(0, 500));
+    throw new Error(`Claude devolvió JSON inválido (respuesta cortada). Intentá de nuevo.`);
+  }
 }
 
 async function getNextTaskId(date) {
@@ -191,7 +217,12 @@ router.get('/', authMiddleware, async (req, res) => {
     if (jira_id)   { conditions.push(`LOWER(jira_id) LIKE LOWER($${idx})`); params.push(`%${jira_id}%`); idx++; }
 
     const result = await pool.query(
-      `SELECT * FROM tickets WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`,
+      `SELECT *,
+        CASE WHEN date_closed IS NOT NULL AND date_created IS NOT NULL
+             THEN (date_closed - date_created)
+             ELSE NULL
+        END AS days_open
+       FROM tickets WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`,
       params
     );
     res.json(result.rows);
@@ -203,10 +234,10 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // POST /api/tickets/preview — auto-complete via Claude (no save)
 router.post('/preview', authMiddleware, async (req, res) => {
-  const { raw_input, lang } = req.body;
+  const { raw_input, lang, project_id } = req.body;
   if (!raw_input) return res.status(400).json({ error: 'Ingresá información del ticket' });
   try {
-    const completed = await autoCompleteTicket(raw_input, lang || 'es');
+    const completed = await autoCompleteTicket(raw_input, lang || 'es', req.user.id, project_id);
     res.json(completed);
   } catch (err) {
     console.error(err);
@@ -218,24 +249,131 @@ router.post('/preview', authMiddleware, async (req, res) => {
 router.post('/', authMiddleware, async (req, res) => {
   const t = req.body;
   try {
-    const task_id = await getNextTaskId(t.date_created);
+    const task_id = (t.task_id && t.task_id.trim()) ? t.task_id.trim() : await getNextTaskId(t.date_created);
     const result = await pool.query(
       `INSERT INTO tickets (user_id, project_id, task_id, jira_id, date_created, date_closed,
         category, environment, status, description, current_situation, impact, value_added,
-        next_steps, governance, strategic_relevance, key_technical_insight, led_by,
+        next_steps, governance, strategic_relevance, key_technical_insight, rca, led_by,
         tier1_involvement, problem_type, network_functions, raw_input)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
        RETURNING *`,
       [req.user.id, t.project_id, task_id, t.jira_id, t.date_created, t.date_closed || null,
        t.category, t.environment, t.status || 'Open', t.description, t.current_situation,
        t.impact, t.value_added, t.next_steps, t.governance, t.strategic_relevance,
-       t.key_technical_insight, t.led_by, t.tier1_involvement || false,
+       t.key_technical_insight, t.rca || '', t.led_by, t.tier1_involvement || false,
        t.problem_type, t.network_functions || [], t.raw_input || '']
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al guardar ticket' });
+  }
+});
+
+// POST /api/tickets/update-from-text — find ticket by JIRA ID, update via Claude
+router.post('/update-from-text', authMiddleware, async (req, res) => {
+  const { raw_update, project_id, lang } = req.body;
+  if (!raw_update || !project_id) return res.status(400).json({ error: 'Falta raw_update o project_id' });
+
+  // Extract JIRA ID from text (e.g. CTAP-78097)
+  const jiraMatch = raw_update.match(/\b([A-Z]+-\d+)\b/);
+  if (!jiraMatch) return res.status(400).json({ error: 'No se encontró un JIRA ID en el texto (ej: CTAP-78097)' });
+  const jiraId = jiraMatch[1];
+
+  try {
+    // Find existing ticket by JIRA ID
+    const ticketRes = await pool.query(
+      `SELECT * FROM tickets WHERE user_id=$1 AND project_id=$2 AND LOWER(jira_id)=LOWER($3) AND deleted=false ORDER BY created_at DESC LIMIT 1`,
+      [req.user.id, project_id, jiraId]
+    );
+    if (ticketRes.rows.length === 0) {
+      return res.status(404).json({ error: `No se encontró el ticket ${jiraId} en este proyecto` });
+    }
+    const current = ticketRes.rows[0];
+
+    // Load ticket guide
+    const guide = await getTicketGuide(req.user.id, project_id);
+    const guideSection = guide?.trim()
+      ? `\n\n═══════════════════════════════════════════\nUSER-DEFINED PROCESSING GUIDE (apply these rules with highest priority):\n═══════════════════════════════════════════\nNOTE: These instructions are written as a dialogue where "YO" = the user (César) and "VOS" = Claude. Read them as directives and apply them as rules. Do NOT reproduce this dialogue format in your output — the output must always be clean, professional, executive-level content.\n\n${guide}\n`
+      : '';
+
+    const langInstruction = lang === 'en'
+      ? '\n\nIMPORTANT: All text fields in the JSON output MUST be written in English.'
+      : '';
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const currentState = JSON.stringify({
+      task_id: current.task_id,
+      jira_id: current.jira_id,
+      date_created: current.date_created,
+      date_closed: current.date_closed,
+      category: current.category,
+      environment: current.environment,
+      status: current.status,
+      description: current.description,
+      current_situation: current.current_situation,
+      impact: current.impact,
+      value_added: current.value_added,
+      next_steps: current.next_steps,
+      governance: current.governance,
+      strategic_relevance: current.strategic_relevance,
+      key_technical_insight: current.key_technical_insight,
+      rca: current.rca,
+      led_by: current.led_by,
+      tier1_involvement: current.tier1_involvement,
+      problem_type: current.problem_type,
+      network_functions: current.network_functions,
+    }, null, 2);
+
+    const UPDATE_PROMPT = `${QBR_METHODOLOGY}${guideSection}${langInstruction}
+
+TODAY'S DATE: ${today}
+
+You are updating an EXISTING ticket. Below is its current state as JSON, followed by a free-text update from the user.
+
+Your job:
+1. Read the current ticket state carefully.
+2. Apply the update described in the free text.
+3. Update ALL relevant fields: status, current_situation, next_steps, value_added, key_technical_insight, rca, date_closed, etc.
+4. If the update implies the ticket is CLOSED (e.g., "se cerró", "está cerrado", "resolved", "fixed", "closed"):
+   - Set status = "Closed"
+   - Set date_closed = "${today}" (unless explicitly stated otherwise)
+   - RCA is MANDATORY — extract or synthesize from the update text
+5. Keep fields that are NOT affected by the update unchanged from the current state.
+6. task_id must remain exactly: "${current.task_id}"
+7. jira_id must remain exactly: "${current.jira_id}"
+8. date_created must remain exactly: "${current.date_created ? current.date_created.toISOString ? current.date_created.toISOString().slice(0,10) : current.date_created : today}"
+
+CURRENT TICKET STATE:
+${currentState}
+
+FREE TEXT UPDATE FROM USER:
+${raw_update}
+
+Return ONLY the updated ticket as a valid JSON object with ALL fields from the task structure. No markdown, no explanation.`;
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const message = await client.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: UPDATE_PROMPT }]
+    });
+
+    const text = message.content[0].text;
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    let updated;
+    try {
+      updated = JSON.parse(cleaned);
+    } catch (e) {
+      console.error('JSON parse error in update-from-text:', text.slice(0, 500));
+      throw new Error('Claude devolvió JSON inválido. Intentá de nuevo.');
+    }
+
+    res.json({ ticket_db_id: current.id, jira_id: jiraId, updated });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Error al procesar la actualización' });
   }
 });
 
@@ -246,12 +384,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
     await pool.query(
       `UPDATE tickets SET jira_id=$1, date_created=$2, date_closed=$3, category=$4, environment=$5, status=$6,
         description=$7, current_situation=$8, impact=$9, value_added=$10, next_steps=$11,
-        governance=$12, strategic_relevance=$13, key_technical_insight=$14, led_by=$15,
-        tier1_involvement=$16, problem_type=$17, network_functions=$18, updated_at=NOW()
-       WHERE id=$19 AND user_id=$20`,
+        governance=$12, strategic_relevance=$13, key_technical_insight=$14, rca=$15, led_by=$16,
+        tier1_involvement=$17, problem_type=$18, network_functions=$19, updated_at=NOW()
+       WHERE id=$20 AND user_id=$21`,
       [t.jira_id, t.date_created || null, t.date_closed || null, t.category, t.environment, t.status,
        t.description, t.current_situation, t.impact, t.value_added, t.next_steps,
-       t.governance, t.strategic_relevance, t.key_technical_insight, t.led_by,
+       t.governance, t.strategic_relevance, t.key_technical_insight, t.rca || '',  t.led_by,
        t.tier1_involvement, t.problem_type, t.network_functions, req.params.id, req.user.id]
     );
     res.json({ ok: true });

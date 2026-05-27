@@ -25,17 +25,54 @@ router.get('/config', authMiddleware, async (req, res) => {
   }
 });
 
+async function beautifyMarkdown(rawContent) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const message = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 4000,
+    messages: [{
+      role: 'user',
+      content: `You are a markdown formatting expert. Take the following content and reformat it using proper Markdown so it looks clean, organized, and visually appealing when rendered.
+
+STRICT RULES:
+- DO NOT add, remove, or change any information, instructions, or meaning
+- DO NOT translate or rephrase — keep the exact same language and wording
+- ONLY improve the visual structure: add headings (##, ###), bullet points (- ), bold text (**text**), horizontal rules (---), etc.
+- Group related content under clear headings
+- Use bullet points for lists or enumerated rules
+- Use bold for key terms or important concepts
+- Preserve all examples exactly as written
+- IMPORTANT: "YO" in the text refers to the user (César), "VOS" refers to Claude. Never change or rephrase these pronouns
+- Return ONLY the formatted markdown, no explanations
+
+Content to format:
+${rawContent}`
+    }]
+  });
+  return message.content[0].text.trim();
+}
+
 // PUT /api/qbr/config
 router.put('/config', authMiddleware, async (req, res) => {
   const { project_id, content } = req.body;
   try {
+    // Auto-beautify before saving (skip if content is empty)
+    let formatted = content;
+    if (content && content.trim().length > 0) {
+      try {
+        formatted = await beautifyMarkdown(content);
+      } catch (e) {
+        console.error('Beautify error (saving raw):', e.message);
+      }
+    }
+
     await pool.query(
       `INSERT INTO qbr_configs (user_id, project_id, content)
        VALUES ($1,$2,$3)
        ON CONFLICT (user_id, project_id) DO UPDATE SET content=$3, updated_at=NOW()`,
-      [req.user.id, project_id, content]
+      [req.user.id, project_id, formatted]
     );
-    res.json({ ok: true });
+    res.json({ ok: true, content: formatted });
   } catch (err) {
     res.status(500).json({ error: 'Error al guardar configuración' });
   }
@@ -308,6 +345,7 @@ PERIOD: ${date_from} to ${date_to}
 TOTAL TICKETS: ${tickets.length}
 
 QBR METHODOLOGY TO FOLLOW:
+NOTE: This methodology may be written as a dialogue where "YO" = the user (César) and "VOS" = Claude. Read it as directives and apply them as rules. Do NOT reproduce this dialogue format in the output — the QBR must always be clean, professional, executive-level content.
 ${config}
 
 TICKET DATA:

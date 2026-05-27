@@ -8,10 +8,9 @@ export default function Sidebar({ user, section, setSection, project, setProject
   const NAV_ITEMS = [
     { key: 'projects', label: t(lang, 'projectsMenu'), icon: '📁' },
     { key: 'data',     label: t(lang, 'dataIngestion'), icon: '📥' },
-    { key: 'qbrconf',  label: t(lang, 'qbrConfig'),     icon: '⚙️'  },
     { key: 'qbrgen',   label: t(lang, 'qbrGenerator'),  icon: '📊' },
     ...(user?.username === 'cesar'
-      ? [{ key: 'weekly', label: 'Weekly Report', icon: '📋' }]
+      ? [{ key: 'weekly', label: lang === 'es' ? 'Reportes Semanales' : 'Weekly Reports', icon: '📋' }]
       : []),
   ];
 
@@ -20,7 +19,7 @@ export default function Sidebar({ user, section, setSection, project, setProject
   ];
 
   // Sections that require a project selected
-  const PROJECT_REQUIRED = ['data', 'qbrconf', 'qbrgen', 'weekly'];
+  const PROJECT_REQUIRED = ['data', 'qbrgen', 'weekly'];
 
   const handleNav = (key) => {
     if (PROJECT_REQUIRED.includes(key) && !project) {

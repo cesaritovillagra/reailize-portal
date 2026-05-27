@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, apiBlob, T } from '../../App.jsx';
+import WeeklyConfig from './WeeklyConfig.jsx';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -283,6 +284,7 @@ function InitiativeCard({ item }) {
 
 export default function WeeklyReport({ user, project, lang }) {
   const defaults = getDefaultDates();
+  const [weeklyTab, setWeeklyTab] = useState('generate'); // 'generate' | 'format'
   const [dateFrom, setDateFrom]   = useState(defaults.from);
   const [dateTo,   setDateTo]     = useState(defaults.to);
   const [tickets,  setTickets]    = useState(null);   // { period, carryover }
@@ -330,7 +332,7 @@ export default function WeeklyReport({ user, project, lang }) {
       const res = await api('/weekly/generate', {
         method: 'POST',
         body: { period_tickets: period, carryover_tickets: carryover,
-                date_from: dateFrom, date_to: dateTo, lang: 'en' }
+                date_from: dateFrom, date_to: dateTo, lang: 'en', project_id: project.id }
       });
       setReport(res);
     } catch (e) {
@@ -381,27 +383,40 @@ export default function WeeklyReport({ user, project, lang }) {
   const includedCarryover = tickets?.carryover.filter(t => !t.exclude_from_weekly).length ?? 0;
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: 'Inter, sans-serif' }}>
+    <div style={{ fontFamily: 'Inter, sans-serif' }}>
 
       {/* ── Header ── */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <span style={{ fontSize: 22 }}>📊</span>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700,
-            fontFamily: 'Space Grotesk, sans-serif', color: T.INK }}>
-            Weekly Status Report
-          </h1>
-          <span style={{
-            fontSize: 10, fontWeight: 700, color: T.ACCENT,
-            background: 'rgba(244,0,133,0.1)', border: `1px solid rgba(244,0,133,0.3)`,
-            padding: '2px 8px', borderRadius: 20, letterSpacing: 0.8,
-            fontFamily: 'Space Grotesk, sans-serif',
-          }}>EXECUTIVE</span>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: T.INK, marginBottom: 4 }}>
+          {lang === 'es' ? 'Reportes Semanales' : 'Weekly Reports'}
+        </h1>
+        <div style={{ color: T.MUTED, fontSize: 13 }}>
+          {lang === 'es' ? 'Proyecto' : 'Project'}: <span style={{ color: T.ACCENT }}>{project.name}</span>
         </div>
-        <p style={{ margin: 0, fontSize: 13, color: T.MUTED }}>
-          {project.name} — AI-powered executive summary from JIRA tickets
-        </p>
       </div>
+
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', borderBottom: `1px solid ${T.BORDER}` }}>
+        {[
+          ['generate', lang === 'es' ? '📋 Generador de Reportes Semanales'      : '📋 Weekly Report Generator'],
+          ['format',   lang === 'es' ? '⚙️ Formato de los Reportes Semanales' : '⚙️ Weekly Report Format'],
+        ].map(([key, label]) => (
+          <div key={key} onClick={() => setWeeklyTab(key)}
+            style={{ padding: '0.6rem 1.2rem', fontSize: 14, cursor: 'pointer',
+              fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
+              color: weeklyTab === key ? T.ACCENT : T.MUTED,
+              borderBottom: weeklyTab === key ? `2px solid ${T.ACCENT}` : '2px solid transparent',
+              marginBottom: -1, transition: 'all 0.15s' }}>
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Formato tab ── */}
+      {weeklyTab === 'format' && <WeeklyConfig project={project} lang={lang} />}
+
+      {/* ── Generador tab ── */}
+      {weeklyTab === 'generate' && <>
 
       {/* ── Date range + Load ── */}
       <div style={{
@@ -573,6 +588,7 @@ export default function WeeklyReport({ user, project, lang }) {
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
+      </>}
     </div>
   );
 }

@@ -1,11 +1,10 @@
 # ============================================================
 # backup-reailize.ps1
 # Backup automático de la base de datos Reailize Portal
-# Destino: OneDrive B.Yond (empresa)
-# NO usar Google Drive personal
+# Destino: OneDrive B.Yond → Documents → Repositorio Claude
 # ============================================================
 
-$backupDir    = "C:\Users\User\OneDrive - B.Yond\Documents\Backups\ReailizeDB"
+$backupDir    = "C:\Users\User\OneDrive - B.Yond\Documents\Repositorio Claude\Backups\ReailizeDB"
 $containerName = "reailize_db"
 $dbName       = "reailize_portal"
 $dbUser       = "reailize_user"

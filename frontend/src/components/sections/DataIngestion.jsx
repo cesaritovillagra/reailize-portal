@@ -84,6 +84,7 @@ const FIELDS = [
   { key: 'governance',            label: 'Governance & Ownership' },
   { key: 'strategic_relevance',   label: 'Strategic Relevance'    },
   { key: 'key_technical_insight', label: 'Key Technical Insight'  },
+  { key: 'rca',                   label: 'RCA / Root Cause'       },
 ];
 
 function Badge({ label, color }) {
@@ -217,6 +218,7 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
             { key: 'jira_id',      label: 'JIRA ID' },
             { key: 'date_created', label: lang === 'es' ? 'Fecha creación' : 'Created date', isDate: true },
             { key: 'date_closed',  label: lang === 'es' ? 'Fecha cierre' : 'Closed date',   isDate: true },
+            { key: 'days_open',    label: lang === 'es' ? 'Días abierto' : 'Days open',      readOnly: true },
             { key: 'category',     label: t(lang, 'category') },
             { key: 'environment',  label: t(lang, 'environment') },
           ].map(f => (
@@ -229,6 +231,11 @@ function TicketModal({ ticket, lang, onClose, onSaved, onDeleted }) {
                   lang={lang}
                   style={inputStyle}
                 />
+              ) : f.readOnly ? (
+                <div style={{ ...inputStyle, color: form[f.key] != null ? T.SUCCESS : T.MUTED,
+                  fontWeight: form[f.key] != null ? 700 : 400 }}>
+                  {form[f.key] != null ? `${form[f.key]} ${lang === 'es' ? 'días' : 'days'}` : '—'}
+                </div>
               ) : (
                 <input
                   value={form[f.key] || ''}
@@ -331,8 +338,9 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
   const processAll = async () => {
     if (!rows || !project) return;
     setProcessing(true);
-    setProgress({ done: 0, total: rows.length, errors: 0 });
+    setProgress({ done: 0, total: rows.length, errors: 0, errorDetails: [] });
     let errors = 0;
+    const errorDetails = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -344,16 +352,21 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
       try {
         const preview = await api('/tickets/preview', {
           method: 'POST',
-          body: { raw_input: rawText, lang },
+          body: { raw_input: rawText, lang, project_id: project?.id },
         });
         await api('/tickets', {
           method: 'POST',
           body: { ...preview, project_id: project.id },
         });
-      } catch {
+      } catch (err) {
         errors++;
+        errorDetails.push({
+          index: i + 1,
+          preview: rawText.slice(0, 120) + (rawText.length > 120 ? '…' : ''),
+          message: err.message || 'Error desconocido',
+        });
       }
-      setProgress({ done: i + 1, total: rows.length, errors });
+      setProgress({ done: i + 1, total: rows.length, errors, errorDetails: [...errorDetails] });
     }
 
     setProcessing(false);
@@ -525,8 +538,19 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
             <span>{pct}%</span>
           </div>
           {progress.errors > 0 && (
-            <div style={{ color: T.DANGER, fontSize: 12, marginTop: 6 }}>
-              {progress.errors} {lang === 'es' ? 'errores' : 'errors'}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: T.DANGER, fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                {progress.errors} {lang === 'es' ? 'errores:' : 'errors:'}
+              </div>
+              {(progress.errorDetails || []).map((e, i) => (
+                <div key={i} style={{ background: 'rgba(255,68,68,0.08)', border: `1px solid ${T.DANGER}`,
+                  borderRadius: 6, padding: '6px 10px', marginBottom: 4, fontSize: 11,
+                  fontFamily: 'Inter, sans-serif' }}>
+                  <span style={{ color: T.DANGER, fontWeight: 700 }}>Ticket #{e.index}:</span>
+                  <span style={{ color: T.MUTED, marginLeft: 6 }}>{e.message}</span>
+                  <div style={{ color: T.MUTED, marginTop: 3, fontStyle: 'italic', opacity: 0.7 }}>{e.preview}</div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -541,7 +565,22 @@ function FileUploadTab({ project, lang, onTicketsSaved }) {
           </div>
           <div style={{ color: T.MUTED, fontSize: 13, marginBottom: '1.5rem' }}>
             {progress.done - progress.errors} {lang === 'es' ? 'tickets guardados correctamente' : 'tickets saved successfully'}
-            {progress.errors > 0 && ` · ${progress.errors} ${lang === 'es' ? 'errores' : 'errors'}`}
+            {progress.errors > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ color: T.DANGER, fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                  {progress.errors} {lang === 'es' ? 'tickets con error:' : 'tickets with errors:'}
+                </div>
+                {(progress.errorDetails || []).map((e, i) => (
+                  <div key={i} style={{ background: 'rgba(255,68,68,0.08)', border: `1px solid ${T.DANGER}`,
+                    borderRadius: 6, padding: '8px 12px', marginBottom: 6, fontSize: 12,
+                    fontFamily: 'Inter, sans-serif', textAlign: 'left' }}>
+                    <span style={{ color: T.DANGER, fontWeight: 700 }}>Ticket #{e.index}:</span>
+                    <span style={{ color: T.MUTED, marginLeft: 6 }}>{e.message}</span>
+                    <div style={{ color: T.MUTED, marginTop: 4, fontStyle: 'italic', opacity: 0.7, fontSize: 11 }}>{e.preview}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <button onClick={reset} className="btn-secondary"
             style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
@@ -565,6 +604,52 @@ export default function DataIngestion({ user, project, lang }) {
   const [error, setError]           = useState('');
   const [viewTicket, setViewTicket] = useState(null);
   const [tab, setTab]               = useState('list');
+
+  // Update ticket tab state
+  const [updateInput,      setUpdateInput]      = useState('');
+  const [updatePreview,    setUpdatePreview]    = useState(null);  // { ticket_db_id, jira_id, updated }
+  const [updateProcessing, setUpdateProcessing] = useState(false);
+  const [updateSaving,     setUpdateSaving]     = useState(false);
+  const [updateError,      setUpdateError]      = useState('');
+  const [updateSaved,      setUpdateSaved]      = useState(false);
+
+  // Ticket Guide
+  const [guideContent,  setGuideContent]  = useState('');
+  const [guideLoading,  setGuideLoading]  = useState(false);
+  const [guideSaving,   setGuideSaving]   = useState(false);
+  const [guideSaved,    setGuideSaved]    = useState(false);
+  const [guideError,    setGuideError]    = useState('');
+
+  useEffect(() => {
+    if (!project) return;
+    setGuideLoading(true);
+    api(`/ticket-guide?project_id=${project.id}`)
+      .then(r => { setGuideContent(r.content || ''); setGuideLoading(false); })
+      .catch(() => setGuideLoading(false));
+  }, [project]);
+
+  const saveGuide = async () => {
+    if (!project) return;
+    if (!guideContent?.trim()) {
+      const confirm = window.confirm(
+        lang === 'es'
+          ? '⚠️ El editor está vacío. Si guardás, se borrarán todas las instrucciones de formato. ¿Querés continuar?'
+          : '⚠️ The editor is empty. Saving will delete all format instructions. Do you want to continue?'
+      );
+      if (!confirm) return;
+    }
+    setGuideSaving(true); setGuideError(''); setGuideSaved(false);
+    try {
+      const res = await api('/ticket-guide', { method: 'PUT', body: { project_id: project.id, content: guideContent } });
+      if (res.content) setGuideContent(res.content); // refresh with beautified version
+      setGuideSaved(true);
+      setTimeout(() => setGuideSaved(false), 3000);
+    } catch (err) {
+      setGuideError(err.message);
+    } finally {
+      setGuideSaving(false);
+    }
+  };
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -600,7 +685,7 @@ export default function DataIngestion({ user, project, lang }) {
     if (!rawInput.trim()) return;
     setProcessing(true); setError('');
     try {
-      const result = await api('/tickets/preview', { method: 'POST', body: { raw_input: rawInput, lang } });
+      const result = await api('/tickets/preview', { method: 'POST', body: { raw_input: rawInput, lang, project_id: project?.id } });
       setPreview({ ...result, raw_input: rawInput });
     } catch (err) {
       setError(err.message);
@@ -663,7 +748,9 @@ export default function DataIngestion({ user, project, lang }) {
   const TABS = [
     ['list',   t(lang, 'tickets')],
     ['new',    t(lang, 'newTicket')],
+    ['update', lang === 'es' ? '✏️ Actualizar Ticket' : '✏️ Update Ticket'],
     ['upload', lang === 'es' ? '📎 Subir archivo' : '📎 Upload file'],
+    ['guide',  lang === 'es' ? '📋 Formato de Tickets' : '📋 Ticket Format'],
   ];
 
   return (
@@ -696,7 +783,7 @@ export default function DataIngestion({ user, project, lang }) {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', borderBottom: `1px solid ${T.BORDER}` }}>
         {TABS.map(([key, label]) => (
-          <div key={key} onClick={() => { setTab(key); setPreview(null); }} className="nav-tab" style={{
+          <div key={key} onClick={() => { setTab(key); setPreview(null); setUpdatePreview(null); setUpdateError(''); setUpdateSaved(false); }} className="nav-tab" style={{
             padding: '0.6rem 1.2rem', fontSize: 14,
             fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
             color: tab === key ? T.ACCENT : T.MUTED,
@@ -966,9 +1053,347 @@ export default function DataIngestion({ user, project, lang }) {
         </div>
       )}
 
+      {/* UPDATE TICKET TAB */}
+      {tab === 'update' && (
+        <div>
+          {updateError && (
+            <div style={{ background: 'rgba(255,68,68,0.1)', border: `1px solid ${T.DANGER}`,
+              borderRadius: 8, padding: '0.8rem 1rem', color: T.DANGER, fontSize: 13,
+              marginBottom: '1rem', whiteSpace: 'pre-wrap' }}>
+              {updateError}
+              <button onClick={() => setUpdateError('')}
+                style={{ float:'right', background:'none', border:'none', color: T.DANGER, fontSize: 18, lineHeight:1 }}>×</button>
+            </div>
+          )}
+
+          {updateSaved && (
+            <div style={{ background: 'rgba(0,208,132,0.1)', border: `1px solid ${T.SUCCESS}`,
+              borderRadius: 8, padding: '0.8rem 1rem', color: T.SUCCESS, fontSize: 13,
+              marginBottom: '1rem' }}>
+              ✓ {lang === 'es' ? 'Ticket actualizado correctamente.' : 'Ticket updated successfully.'}
+            </div>
+          )}
+
+          {!updatePreview ? (
+            /* ── Input phase ── */
+            <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem' }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 15, marginBottom: 6 }}>
+                  {lang === 'es' ? '✏️ Actualizar ticket existente' : '✏️ Update existing ticket'}
+                </div>
+                <div style={{ color: T.MUTED, fontSize: 13, lineHeight: 1.7 }}>
+                  {lang === 'es'
+                    ? 'Escribí el JIRA ID y la actualización en texto libre. Claude va a encontrar el ticket, actualizar todos los campos relevantes y mostrarte una vista previa antes de guardar.'
+                    : 'Write the JIRA ID and the update in free text. Claude will find the ticket, update all relevant fields and show you a preview before saving.'}
+                </div>
+              </div>
+
+              {/* Info box */}
+              <div style={{ background: 'rgba(125,208,226,0.08)', border: '1px solid rgba(125,208,226,0.25)',
+                borderRadius: 10, padding: '0.7rem 1rem', color: T.CYAN, fontSize: 12,
+                lineHeight: 1.6, marginBottom: '1.2rem' }}>
+                💡 {lang === 'es'
+                  ? 'Ejemplos: "CTAP-78097 — se confirmó que el FW fue corregido, issue cerrado." · "CTAP-65432 está bloqueado esperando respuesta del equipo CHF."'
+                  : 'Examples: "CTAP-78097 — FW correction confirmed, issue closed." · "CTAP-65432 is blocked waiting for CHF team response."'}
+              </div>
+
+              <textarea
+                value={updateInput}
+                onChange={e => setUpdateInput(e.target.value)}
+                placeholder={lang === 'es'
+                  ? 'Ej: CTAP-78097 — se cerró el issue. El equipo de FW corrigió las rutas faltantes en redwa100gfw01. RCA confirmado: misconfiguration en la interfaz de FEXN.'
+                  : 'E.g.: CTAP-78097 — issue closed. FW team fixed missing routes on redwa100gfw01. Confirmed RCA: FEXN interface misconfiguration.'}
+                style={{ width: '100%', minHeight: 140, background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+                  borderRadius: 8, padding: '0.8rem 1rem', color: T.INK, fontSize: 13,
+                  fontFamily: 'Inter, sans-serif', resize: 'vertical', outline: 'none',
+                  lineHeight: 1.7, boxSizing: 'border-box', marginBottom: '1.2rem' }}
+              />
+
+              <button
+                onClick={async () => {
+                  if (!updateInput.trim()) return;
+                  setUpdateProcessing(true); setUpdateError(''); setUpdateSaved(false);
+                  try {
+                    const result = await api('/tickets/update-from-text', {
+                      method: 'POST',
+                      body: { raw_update: updateInput, lang, project_id: project?.id },
+                    });
+                    setUpdatePreview(result);
+                  } catch (err) {
+                    setUpdateError(err.message);
+                  } finally {
+                    setUpdateProcessing(false);
+                  }
+                }}
+                disabled={updateProcessing || !updateInput.trim()}
+                className="btn-primary"
+                style={{ background: T.ACCENT, border: 'none', borderRadius: 8,
+                  padding: '0.7rem 1.8rem', color: '#fff',
+                  fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
+                  fontSize: 14, opacity: updateProcessing || !updateInput.trim() ? 0.6 : 1 }}>
+                {updateProcessing
+                  ? (lang === 'es' ? '⏳ Procesando…' : '⏳ Processing…')
+                  : (lang === 'es' ? '🔍 Vista previa' : '🔍 Preview')}
+              </button>
+            </div>
+
+          ) : (
+            /* ── Preview phase ── */
+            <div>
+              {/* Preview header */}
+              <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14,
+                padding: '1rem 1.4rem', marginBottom: '1rem',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 15 }}>
+                    {lang === 'es' ? '🔍 Vista previa — ' : '🔍 Preview — '}
+                    <span style={{ color: T.ACCENT }}>{updatePreview.jira_id}</span>
+                  </span>
+                  <div style={{ color: T.MUTED, fontSize: 12, marginTop: 3 }}>
+                    {lang === 'es'
+                      ? 'Revisá los cambios propuestos. Podés editarlos antes de guardar.'
+                      : 'Review the proposed changes. You can edit them before saving.'}
+                  </div>
+                </div>
+                <button onClick={() => { setUpdatePreview(null); setUpdateSaved(false); }}
+                  style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
+                    padding: '5px 14px', color: T.MUTED, fontSize: 12, cursor: 'pointer',
+                    fontFamily: "'Space Grotesk', sans-serif" }}>
+                  {lang === 'es' ? '← Volver' : '← Back'}
+                </button>
+              </div>
+
+              {/* Editable preview fields */}
+              <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.4rem' }}>
+                {/* Top grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: '1rem' }}>
+                  {[
+                    { key: 'task_id', label: 'TASK ID', readOnly: true },
+                    { key: 'jira_id', label: 'JIRA ID' },
+                    { key: 'status', label: 'STATUS', type: 'select' },
+                    { key: 'date_created', label: lang === 'es' ? 'FECHA CREACIÓN' : 'DATE CREATED', type: 'date' },
+                    { key: 'date_closed', label: lang === 'es' ? 'FECHA CIERRE' : 'DATE CLOSED', type: 'date' },
+                    { key: 'environment', label: 'ENVIRONMENT' },
+                    { key: 'category', label: 'CATEGORY' },
+                    { key: 'problem_type', label: 'PROBLEM TYPE', type: 'problemType' },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+                        fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>{f.label}</label>
+                      {f.readOnly ? (
+                        <div style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 6,
+                          padding: '0.5rem 0.8rem', color: T.MUTED, fontSize: 13, fontFamily: 'Inter, sans-serif' }}>
+                          {updatePreview.updated[f.key] || '—'}
+                        </div>
+                      ) : f.type === 'select' ? (
+                        <select value={updatePreview.updated[f.key] || 'Open'}
+                          onChange={e => setUpdatePreview(p => ({ ...p, updated: { ...p.updated, [f.key]: e.target.value } }))}
+                          style={{ width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+                            borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13, outline: 'none' }}>
+                          {STATUSES.map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      ) : f.type === 'problemType' ? (
+                        <select value={updatePreview.updated[f.key] || ''}
+                          onChange={e => setUpdatePreview(p => ({ ...p, updated: { ...p.updated, [f.key]: e.target.value } }))}
+                          style={{ width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+                            borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13, outline: 'none' }}>
+                          <option value="">{lang === 'es' ? 'Seleccionar…' : 'Select…'}</option>
+                          {PROBLEM_TYPES.map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      ) : f.type === 'date' ? (
+                        <DateField
+                          value={updatePreview.updated[f.key] || ''}
+                          onChange={v => setUpdatePreview(p => ({ ...p, updated: { ...p.updated, [f.key]: v } }))}
+                          lang={lang}
+                          style={{ width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+                            borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13,
+                            fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      ) : (
+                        <input value={updatePreview.updated[f.key] || ''}
+                          onChange={e => setUpdatePreview(p => ({ ...p, updated: { ...p.updated, [f.key]: e.target.value } }))}
+                          style={{ width: '100%', background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+                            borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13,
+                            fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box' }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Text area fields */}
+                {FIELDS.map(f => (
+                  <div key={f.key} style={{ marginBottom: '0.9rem' }}>
+                    <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 4,
+                      fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
+                      {f.label.toUpperCase()}
+                    </label>
+                    <textarea value={updatePreview.updated[f.key] || ''}
+                      onChange={e => setUpdatePreview(p => ({ ...p, updated: { ...p.updated, [f.key]: e.target.value } }))}
+                      style={{ width: '100%', minHeight: 72, background: T.PANEL2, border: `1px solid ${T.BORDER}`,
+                        borderRadius: 6, padding: '0.5rem 0.8rem', color: T.INK, fontSize: 13,
+                        fontFamily: 'Inter, sans-serif', resize: 'vertical', outline: 'none',
+                        lineHeight: 1.6, boxSizing: 'border-box' }} />
+                  </div>
+                ))}
+
+                {/* Save / back */}
+                <div style={{ display: 'flex', gap: 10, marginTop: '1rem' }}>
+                  <button
+                    onClick={async () => {
+                      if (!updatePreview) return;
+                      setUpdateSaving(true); setUpdateError(''); setUpdateSaved(false);
+                      try {
+                        const u = updatePreview.updated;
+                        await api(`/tickets/${updatePreview.ticket_db_id}`, {
+                          method: 'PUT',
+                          body: {
+                            jira_id: u.jira_id,
+                            date_created: u.date_created || null,
+                            date_closed: u.date_closed || null,
+                            category: u.category,
+                            environment: u.environment,
+                            status: u.status,
+                            description: u.description,
+                            current_situation: u.current_situation,
+                            impact: u.impact,
+                            value_added: u.value_added,
+                            next_steps: u.next_steps,
+                            governance: u.governance,
+                            strategic_relevance: u.strategic_relevance,
+                            key_technical_insight: u.key_technical_insight,
+                            rca: u.rca || '',
+                            led_by: u.led_by,
+                            tier1_involvement: u.tier1_involvement,
+                            problem_type: u.problem_type,
+                            network_functions: u.network_functions || [],
+                          }
+                        });
+                        setUpdateSaved(true);
+                        setUpdatePreview(null);
+                        setUpdateInput('');
+                        reloadTickets();
+                      } catch (err) {
+                        setUpdateError(err.message);
+                      } finally {
+                        setUpdateSaving(false);
+                      }
+                    }}
+                    disabled={updateSaving}
+                    className="btn-primary"
+                    style={{ background: T.SUCCESS, border: 'none', borderRadius: 8,
+                      padding: '0.7rem 1.8rem', color: '#fff',
+                      fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
+                      fontSize: 14, opacity: updateSaving ? 0.7 : 1 }}>
+                    {updateSaving
+                      ? (lang === 'es' ? '⏳ Guardando…' : '⏳ Saving…')
+                      : (lang === 'es' ? '✅ Confirmar y Guardar' : '✅ Confirm & Save')}
+                  </button>
+                  <button onClick={() => { setUpdatePreview(null); setUpdateSaved(false); }}
+                    style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
+                      padding: '0.7rem 1.2rem', color: T.MUTED, fontSize: 14, cursor: 'pointer' }}>
+                    {lang === 'es' ? 'Editar texto' : 'Edit text'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* UPLOAD FILE TAB */}
       {tab === 'upload' && (
         <FileUploadTab project={project} lang={lang} onTicketsSaved={reloadTickets} />
+      )}
+
+      {/* GUÍA DE TICKETS — vista previa */}
+      {tab === 'guide' && (
+        <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '1rem 1.4rem', borderBottom: `1px solid ${T.BORDER}`, background: T.PANEL2,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 15 }}>
+                {lang === 'es' ? 'Formato de Tickets' : 'Ticket Format'}
+              </span>
+              <span style={{ marginLeft: 12, color: T.MUTED, fontSize: 12 }}>
+                {lang === 'es' ? 'Esta guía la usa Claude para autocompletar tickets' : 'Claude uses this guide to auto-complete tickets'}
+              </span>
+            </div>
+            <button onClick={() => setTab('guide-edit')}
+              style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
+                padding: '5px 14px', color: T.MUTED, fontSize: 12, cursor: 'pointer',
+                fontFamily: "'Space Grotesk', sans-serif" }}>
+              ✏️ {lang === 'es' ? 'Editar' : 'Edit'}
+            </button>
+          </div>
+          <div style={{ padding: '1.2rem 1.5rem', minHeight: 300, maxHeight: 'calc(100vh - 350px)', overflowY: 'auto' }}>
+            {guideLoading ? (
+              <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem' }}>
+                {lang === 'es' ? 'Cargando guía…' : 'Loading guide…'}
+              </div>
+            ) : guideContent?.trim() ? (
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                fontSize: 13, color: T.INK, fontFamily: 'Inter, sans-serif', lineHeight: 1.8 }}>
+                {guideContent}
+              </pre>
+            ) : (
+              <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem', fontSize: 14 }}>
+                {lang === 'es'
+                  ? 'No hay guía configurada. Usá la pestaña "Editar Guía" para agregar instrucciones.'
+                  : 'No guide configured yet. Use the "Edit Guide" tab to add instructions.'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* EDITAR GUÍA */}
+      {tab === 'guide-edit' && (
+        <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '1rem 1.4rem', borderBottom: `1px solid ${T.BORDER}`, background: T.PANEL2,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 15 }}>
+              ✏️ {lang === 'es' ? 'Editar Formato de Tickets' : 'Edit Ticket Format'}
+            </span>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              {guideSaved && (
+                <span style={{ color: T.SUCCESS, fontSize: 13, fontFamily: "'Space Grotesk', sans-serif" }}>
+                  ✓ {lang === 'es' ? 'Guardado' : 'Saved'}
+                </span>
+              )}
+              {guideError && (
+                <span style={{ color: T.DANGER, fontSize: 12 }}>{guideError}</span>
+              )}
+              <button onClick={saveGuide} disabled={guideSaving} className="btn-primary"
+                style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.55rem 1.3rem',
+                  color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13,
+                  opacity: guideSaving ? 0.7 : 1, cursor: guideSaving ? 'not-allowed' : 'pointer' }}>
+                {guideSaving
+                  ? (lang === 'es' ? '✨ Formateando…' : '✨ Formatting…')
+                  : (lang === 'es' ? 'Guardar Guía' : 'Save Guide')}
+              </button>
+            </div>
+          </div>
+          {/* Info box */}
+          <div style={{ margin: '1rem 1.4rem 0', background: 'rgba(125,208,226,0.08)',
+            border: '1px solid rgba(125,208,226,0.25)', borderRadius: 10,
+            padding: '0.8rem 1.1rem', color: T.CYAN, fontSize: 13, lineHeight: 1.6 }}>
+            {lang === 'es'
+              ? '💡 Claude va a leer esta guía automáticamente cada vez que procese un ticket nuevo o un archivo. Escribí las reglas, criterios y contexto que necesita para completar los campos correctamente.'
+              : '💡 Claude will automatically read this guide every time it processes a new ticket or file. Write the rules, criteria and context needed to correctly fill in the fields.'}
+          </div>
+          <div style={{ padding: '1rem 1.4rem', height: 'calc(100vh - 420px)', boxSizing: 'border-box' }}>
+            <textarea
+              value={guideContent}
+              onChange={e => setGuideContent(e.target.value)}
+              style={{ width: '100%', height: '100%', background: 'transparent', border: 'none',
+                color: T.INK, fontSize: 13, fontFamily: 'Inter, sans-serif',
+                resize: 'none', outline: 'none', lineHeight: 1.8, boxSizing: 'border-box' }}
+              placeholder={lang === 'es'
+                ? 'Escribí acá las instrucciones para que Claude procese los tickets correctamente…'
+                : 'Write here the instructions for Claude to correctly process tickets…'}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

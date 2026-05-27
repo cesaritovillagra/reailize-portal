@@ -108,10 +108,25 @@ router.put('/exclude/:id', authMiddleware, async (req, res) => {
 
 // POST /api/weekly/generate — generate weekly report via Claude
 router.post('/generate', authMiddleware, async (req, res) => {
-  const { period_tickets, carryover_tickets, date_from, date_to, lang } = req.body;
+  const { period_tickets, carryover_tickets, date_from, date_to, lang, project_id } = req.body;
 
   if (!period_tickets?.length && !carryover_tickets?.length) {
     return res.status(400).json({ error: 'No hay tickets para generar el reporte' });
+  }
+
+  // Load user's weekly guide from DB
+  let weeklyGuideSection = '';
+  try {
+    const guideRes = await pool.query(
+      'SELECT content FROM weekly_guide WHERE user_id=$1 AND project_id=$2',
+      [req.user.id, project_id]
+    );
+    const guideContent = guideRes.rows[0]?.content?.trim();
+    if (guideContent) {
+      weeklyGuideSection = `\n\n═══════════════════════════════════════════\nUSER-DEFINED FORMAT GUIDE (apply with highest priority):\n═══════════════════════════════════════════\nNOTE: This guide may be written as a dialogue where "YO" = the user (César) and "VOS" = Claude. Read it as directives and apply them as rules. Do NOT reproduce this dialogue format in the output — the report must always be clean, professional, executive-level content.\n\n${guideContent}\n`;
+    }
+  } catch (e) {
+    console.error('Error loading weekly guide:', e.message);
   }
 
   const formatTickets = (tickets) => tickets.map(t =>
@@ -143,7 +158,7 @@ ${carryover_tickets.length ? formatTickets(carryover_tickets) : 'None'}
       max_tokens: 3000,
       messages: [{
         role: 'user',
-        content: `${WEEKLY_PROMPT}${langInstruction}\n\n${input}\n\nGenerate the weekly report JSON.`
+        content: `${WEEKLY_PROMPT}${weeklyGuideSection}${langInstruction}\n\n${input}\n\nGenerate the weekly report JSON.`
       }]
     });
 

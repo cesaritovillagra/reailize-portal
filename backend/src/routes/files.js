@@ -40,7 +40,8 @@ router.post('/parse', authMiddleware, upload.single('file'), (req, res) => {
       const text = req.file.buffer.toString('utf-8').trim();
       if (!text) return res.json({ rows: [], count: 0, isTxt: true });
       // Split by --- separator (supports multiple tickets in one file)
-      const blocks = text.split(/\n---\n/).map(b => b.trim()).filter(b => b.length > 0);
+      // Flexible: handles Windows line endings, extra spaces, multiple dashes
+      const blocks = text.split(/\r?\n[ \t]*-{3,}[ \t]*\r?\n/).map(b => b.trim()).filter(b => b.length > 0);
       rows = blocks.map(block => ({ raw_input: block }));
       return res.json({ rows, count: rows.length, isTxt: true });
 

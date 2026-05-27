@@ -8,7 +8,9 @@ const projectsRoutes = require('./routes/projects');
 const ticketsRoutes  = require('./routes/tickets');
 const qbrRoutes      = require('./routes/qbr');
 const filesRoutes    = require('./routes/files');
-const weeklyRoutes   = require('./routes/weekly');
+const weeklyRoutes       = require('./routes/weekly');
+const ticketGuideRoutes  = require('./routes/ticketGuide');
+const weeklyGuideRoutes  = require('./routes/weeklyGuide');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -22,7 +24,9 @@ app.use('/api/projects', projectsRoutes);
 app.use('/api/tickets',  ticketsRoutes);
 app.use('/api/qbr',      qbrRoutes);
 app.use('/api/files',    filesRoutes);
-app.use('/api/weekly',   weeklyRoutes);
+app.use('/api/weekly',       weeklyRoutes);
+app.use('/api/ticket-guide',  ticketGuideRoutes);
+app.use('/api/weekly-guide', weeklyGuideRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
 

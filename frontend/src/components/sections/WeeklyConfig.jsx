@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { T, api } from '../../App.jsx';
-import { t } from '../../i18n.js';
 
 // ── Simple markdown renderer ──────────────────────────────────────────────────
 function MarkdownPreview({ content }) {
@@ -19,25 +18,17 @@ function MarkdownPreview({ content }) {
 
   while (i < lines.length) {
     const line = lines[i];
-
-    // Blank line
     if (!line.trim()) { elements.push(<div key={i} style={{ height: 8 }} />); i++; continue; }
-
-    // Horizontal rule
     if (/^---+$/.test(line.trim())) {
       elements.push(<hr key={i} style={{ border: 'none', borderTop: `1px solid ${T.BORDER}`, margin: '1rem 0' }} />);
       i++; continue;
     }
-
-    // Headings
     const h3 = line.match(/^### (.+)/);
     const h2 = line.match(/^## (.+)/);
     const h1 = line.match(/^# (.+)/);
     if (h1) { elements.push(<h1 key={i} style={{ fontSize: 22, fontWeight: 700, color: T.INK, fontFamily: "'Space Grotesk', sans-serif", margin: '1.4rem 0 0.5rem' }}>{inlineFormat(h1[1])}</h1>); i++; continue; }
     if (h2) { elements.push(<h2 key={i} style={{ fontSize: 17, fontWeight: 700, color: T.INK, fontFamily: "'Space Grotesk', sans-serif", margin: '1.2rem 0 0.4rem', borderBottom: `1px solid ${T.BORDER}`, paddingBottom: 6 }}>{inlineFormat(h2[1])}</h2>); i++; continue; }
     if (h3) { elements.push(<h3 key={i} style={{ fontSize: 14, fontWeight: 700, color: T.ACCENT, fontFamily: "'Space Grotesk', sans-serif", margin: '1rem 0 0.3rem', letterSpacing: 0.5 }}>{inlineFormat(h3[1])}</h3>); i++; continue; }
-
-    // Code block
     if (line.startsWith('```')) {
       const codeLines = [];
       i++;
@@ -51,8 +42,6 @@ function MarkdownPreview({ content }) {
       );
       i++; continue;
     }
-
-    // Bullet list
     if (/^[-*] /.test(line)) {
       const items = [];
       while (i < lines.length && /^[-*] /.test(lines[i])) {
@@ -62,8 +51,6 @@ function MarkdownPreview({ content }) {
       elements.push(<ul key={`ul-${i}`} style={{ paddingLeft: 20, margin: '0.4rem 0', color: 'rgba(240,240,245,0.8)', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>{items}</ul>);
       continue;
     }
-
-    // Numbered list
     if (/^\d+\. /.test(line)) {
       const items = [];
       while (i < lines.length && /^\d+\. /.test(lines[i])) {
@@ -73,8 +60,6 @@ function MarkdownPreview({ content }) {
       elements.push(<ol key={`ol-${i}`} style={{ paddingLeft: 20, margin: '0.4rem 0', color: 'rgba(240,240,245,0.8)', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>{items}</ol>);
       continue;
     }
-
-    // Blockquote
     if (line.startsWith('> ')) {
       elements.push(
         <blockquote key={i} style={{ borderLeft: `3px solid ${T.ACCENT}`, paddingLeft: 12, margin: '0.5rem 0',
@@ -84,8 +69,6 @@ function MarkdownPreview({ content }) {
       );
       i++; continue;
     }
-
-    // Regular paragraph
     elements.push(
       <p key={i} style={{ margin: '0.2rem 0', fontSize: 14, lineHeight: 1.75,
         color: 'rgba(240,240,245,0.82)', fontFamily: 'Inter, sans-serif' }}>
@@ -94,12 +77,10 @@ function MarkdownPreview({ content }) {
     );
     i++;
   }
-
   return <div style={{ padding: '0.5rem 0' }}>{elements}</div>;
 }
 
 function inlineFormat(text) {
-  // Bold + italic combined **_text_**
   const parts = [];
   const regex = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
   let last = 0, match, key = 0;
@@ -117,7 +98,7 @@ function inlineFormat(text) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function QBRConfig({ user, project, lang }) {
+export default function WeeklyConfig({ project, lang }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -128,7 +109,7 @@ export default function QBRConfig({ user, project, lang }) {
   useEffect(() => {
     if (!project) return;
     setLoading(true);
-    api(`/qbr/config?project_id=${project.id}`)
+    api(`/weekly-guide?project_id=${project.id}`)
       .then(r => { setContent(r.content); setLoading(false); })
       .catch(() => setLoading(false));
   }, [project]);
@@ -144,7 +125,7 @@ export default function QBRConfig({ user, project, lang }) {
     }
     setSaving(true); setError(''); setSaved(false);
     try {
-      const res = await api('/qbr/config', { method: 'PUT', body: { project_id: project.id, content } });
+      const res = await api('/weekly-guide', { method: 'PUT', body: { project_id: project.id, content } });
       if (res.content) setContent(res.content); // refresh with beautified version
       setSaved(true);
       setEditing(false);
@@ -161,7 +142,9 @@ export default function QBRConfig({ user, project, lang }) {
       <div className="fadeUp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
         <div style={{ textAlign: 'center', color: T.MUTED }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
-          <div style={{ fontSize: 16 }}>{t(lang, 'selectProjectQBRConfig')}</div>
+          <div style={{ fontSize: 16 }}>
+            {lang === 'es' ? 'Seleccioná un proyecto para ver el formato.' : 'Select a project to view the format.'}
+          </div>
         </div>
       </div>
     );
@@ -173,10 +156,10 @@ export default function QBRConfig({ user, project, lang }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 24, color: T.INK, marginBottom: 4 }}>
-            {t(lang, 'qbrConfigTitle')}
+            {lang === 'es' ? 'Formato del Reporte Semanal' : 'Weekly Report Format'}
           </h1>
           <div style={{ color: T.MUTED, fontSize: 13 }}>
-            {t(lang, 'project')}: <span style={{ color: T.ACCENT }}>{project.name}</span>
+            {lang === 'es' ? 'Proyecto' : 'Project'}: <span style={{ color: T.ACCENT }}>{project.name}</span>
           </div>
         </div>
       </div>
@@ -189,7 +172,9 @@ export default function QBRConfig({ user, project, lang }) {
       )}
 
       {loading ? (
-        <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem' }}>{t(lang, 'loadingConfig')}</div>
+        <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem' }}>
+          {lang === 'es' ? 'Cargando...' : 'Loading...'}
+        </div>
       ) : (
         <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
 
@@ -197,12 +182,12 @@ export default function QBRConfig({ user, project, lang }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderBottom: `1px solid ${T.BORDER}`, padding: '0.75rem 1.2rem', background: T.PANEL2 }}>
             <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 15 }}>
-              {lang === 'en' ? 'QBR Methodology' : 'Metodología QBR'}
+              {lang === 'es' ? 'Formato del Reporte Semanal' : 'Weekly Report Format'}
             </span>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               {saved && (
                 <span style={{ color: T.SUCCESS, fontSize: 13, fontFamily: "'Space Grotesk', sans-serif" }}>
-                  ✓ {t(lang, 'saved')}
+                  ✓ {lang === 'es' ? 'Guardado' : 'Saved'}
                 </span>
               )}
               {editing ? (
@@ -211,14 +196,14 @@ export default function QBRConfig({ user, project, lang }) {
                     style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
                       padding: '5px 14px', color: T.MUTED, fontSize: 12, cursor: 'pointer',
                       fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {lang === 'en' ? 'Cancel' : 'Cancelar'}
+                    {lang === 'es' ? 'Cancelar' : 'Cancel'}
                   </button>
                   <button onClick={save} disabled={saving}
                     style={{ background: T.ACCENT, border: 'none', borderRadius: 8,
                       padding: '5px 16px', color: '#fff', fontSize: 12, fontWeight: 700,
                       cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
                       fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {saving ? (lang === 'en' ? '✨ Formatting…' : '✨ Formateando…') : (lang === 'en' ? 'Save' : 'Guardar')}
+                    {saving ? (lang === 'es' ? '✨ Formateando…' : '✨ Formatting…') : (lang === 'es' ? 'Guardar' : 'Save')}
                   </button>
                 </>
               ) : (
@@ -226,7 +211,7 @@ export default function QBRConfig({ user, project, lang }) {
                   style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
                     padding: '5px 14px', color: T.MUTED, fontSize: 12, cursor: 'pointer',
                     fontFamily: "'Space Grotesk', sans-serif" }}>
-                  ✏️ {lang === 'en' ? 'Edit' : 'Editar'}
+                  ✏️ {lang === 'es' ? 'Editar' : 'Edit'}
                 </button>
               )}
             </div>
@@ -242,15 +227,17 @@ export default function QBRConfig({ user, project, lang }) {
                 style={{ width: '100%', height: '100%', background: 'transparent', border: 'none',
                   color: T.INK, fontSize: 14, fontFamily: 'Inter, sans-serif',
                   resize: 'none', outline: 'none', lineHeight: 1.8, boxSizing: 'border-box' }}
-                placeholder={t(lang, 'configPlaceholder')}
+                placeholder={lang === 'es'
+                  ? 'Escribí aquí las instrucciones de formato para el reporte semanal...'
+                  : 'Write here the format instructions for the weekly report...'}
               />
             ) : content?.trim() ? (
               <MarkdownPreview content={content} />
             ) : (
               <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem', fontSize: 14 }}>
                 {lang === 'es'
-                  ? 'No hay metodología configurada. Hacé clic en "Editar" para agregar instrucciones.'
-                  : 'No methodology configured yet. Click "Edit" to add instructions.'}
+                  ? 'No hay formato configurado. Hacé clic en "Editar" para agregar instrucciones.'
+                  : 'No format configured yet. Click "Edit" to add instructions.'}
               </div>
             )}
           </div>

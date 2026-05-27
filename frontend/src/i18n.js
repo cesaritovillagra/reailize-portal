@@ -5,7 +5,7 @@ export const translations = {
     administration: 'ADMINISTRACIÓN',
     dataIngestion: 'Incorporación de Datos',
     qbrConfig: 'Lineamientos de QBR',
-    qbrGenerator: 'Generador de QBR',
+    qbrGenerator: 'Generador de QBRs',
     userManagement: 'Gestión de Usuarios',
     selectProject: 'Seleccioná un proyecto',
     newProject: '＋ Nuevo proyecto',
@@ -79,7 +79,7 @@ export const translations = {
     markdownSupported: 'Markdown soportado (# Título, ## Sección, - bullet)',
 
     // QBR Generator
-    qbrGeneratorTitle: 'Generador de QBR',
+    qbrGeneratorTitle: 'Generador de QBRs',
     selectPeriod: 'Seleccioná el período',
     from: 'DESDE',
     to: 'HASTA',
