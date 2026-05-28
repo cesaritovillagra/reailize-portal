@@ -19,10 +19,13 @@ if (-not (Test-Path $backupDir)) {
 }
 
 # Ejecutar pg_dump dentro del contenedor Docker
-$output = docker exec $containerName pg_dump -U $dbUser $dbName 2>&1
+# Usar cmd /c para piping directo → evita que PowerShell reinterprete bytes UTF-8 como CP437
+$errorFile = "$backupDir\error_$timestamp.txt"
+cmd /c "docker exec $containerName pg_dump -U $dbUser $dbName > `"$backupFile`" 2>`"$errorFile`""
 
 if ($LASTEXITCODE -eq 0) {
-    $output | Out-File -FilePath $backupFile -Encoding UTF8
+    # Eliminar archivo de error vacío si todo fue bien
+    if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
     Write-Host "✅ Backup guardado: $backupFile"
 
     # Eliminar backups viejos, conservar solo los últimos $maxBackups
@@ -32,7 +35,9 @@ if ($LASTEXITCODE -eq 0) {
         Write-Host "🗑️  Backups antiguos eliminados (conservados: $maxBackups)"
     }
 } else {
-    $errorMsg = "❌ Error al crear backup: $output"
+    $errorContent = if (Test-Path $errorFile) { Get-Content $errorFile -Raw } else { "Unknown error" }
+    $errorMsg = "❌ Error al crear backup: $errorContent"
     Write-Host $errorMsg
-    $errorMsg | Out-File -FilePath "$backupDir\error_$timestamp.txt" -Encoding UTF8
+    # Eliminar el backup incompleto si existe
+    if (Test-Path $backupFile) { Remove-Item $backupFile -Force }
 }
