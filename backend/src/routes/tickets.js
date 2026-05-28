@@ -14,6 +14,7 @@ TASK STRUCTURE — fill ALL fields:
 - task_id: if the input contains a Task ID (e.g. "Task ID: 2026-05-14-00036"), extract and return it exactly as-is. If no Task ID is present in the input, return null and the system will assign one automatically.
 - jira_id: extract from input if present (format: CTAP-XXXXX or similar)
 - date_created: USE TODAY'S DATE (provided below) by default. ONLY override if the user explicitly writes something like "fecha de creación: XX/XX/XX" or "date created: XX/XX/XX" in the input text. NEVER extract a date from the JIRA ticket body or description — only use an explicitly instructed date override.
+- date_closed: Extract from input if present. Look for fields labeled "Date Closed:", "Fecha Cierre:", "Closed:", or similar. Convert to YYYY-MM-DD format. MANDATORY for closed tickets (status = Closed) — if the ticket is Closed but no date_closed is found in the input, use TODAY'S DATE. For open/in-progress tickets, return null.
 - category: classify the ticket
 - environment: extract or infer (e.g., CHF, Lab, Production, Pre-prod)
 - status: Open | In Progress | On Hold | Escalated | Blocked | Closed
