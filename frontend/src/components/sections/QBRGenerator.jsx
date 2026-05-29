@@ -18,30 +18,44 @@ function ChartCard({ title, children }) {
   );
 }
 
-function KpiBox({ value, label, color }) {
+function KpiBox({ value, label, color, emoji, detail }) {
   return (
     <div style={{ background: color, borderRadius: 12, padding: '1rem 1.5rem', textAlign: 'center', flex: 1 }}>
+      {emoji && <div style={{ fontSize: 20, marginBottom: 2 }}>{emoji}</div>}
       <div style={{ fontSize: 32, fontWeight: 800, color: '#fff', fontFamily: "'Space Grotesk', sans-serif", lineHeight: 1.1 }}>
         {value}
       </div>
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontFamily: 'Inter, sans-serif' }}>
         {label}
       </div>
+      {detail && detail.length > 0 && (
+        <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.25)', paddingTop: 6 }}>
+          {detail.map((d, i) => (
+            <div key={i} style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)', fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}>
+              {d}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function ContentBox({ icon, title, items, bg, border, titleColor }) {
+  // Normalize: support both string[] and {icon, text}[]
+  const normalized = (items || []).map(i =>
+    typeof i === 'string' ? { icon: '•', text: i } : i
+  );
   return (
     <div style={{ background: bg, border: `1.5px solid ${border}`, borderRadius: 12, padding: '1rem 1.2rem', flex: 1 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: titleColor, fontFamily: "'Space Grotesk', sans-serif", marginBottom: 8 }}>
         {icon} {title}
       </div>
-      {items.map((item, i) => (
+      {normalized.map((item, i) => (
         <div key={i} style={{ fontSize: 13, color: T.INK, fontFamily: 'Inter, sans-serif',
           padding: '3px 0', display: 'flex', gap: 6 }}>
-          <span style={{ color: border, flexShrink: 0 }}>•</span>
-          <span>{item}</span>
+          <span style={{ flexShrink: 0 }}>{item.icon || '•'}</span>
+          <span>{item.text || item}</span>
         </div>
       ))}
     </div>
@@ -232,8 +246,10 @@ export default function QBRGenerator({ user, project, lang }) {
 
           {/* KPI row */}
           <div style={{ display: 'flex', gap: 16, marginBottom: '1.5rem' }}>
-            <KpiBox value={result.slide_data.kpi_1?.value} label={result.slide_data.kpi_1?.label} color={T.ACCENT} />
-            <KpiBox value={result.slide_data.kpi_2?.value} label={result.slide_data.kpi_2?.label} color='#00A878' />
+            <KpiBox value={result.slide_data.kpi_1?.value} label={result.slide_data.kpi_1?.label}
+              emoji={result.slide_data.kpi_1?.emoji} detail={result.slide_data.kpi_1?.detail} color={T.ACCENT} />
+            <KpiBox value={result.slide_data.kpi_2?.value} label={result.slide_data.kpi_2?.label}
+              emoji={result.slide_data.kpi_2?.emoji} detail={result.slide_data.kpi_2?.detail} color='#00A878' />
             <KpiBox value={String(result.charts.totalTickets)} label="Tickets Managed" color='#3B82F6' />
             {result.charts.avgDays != null && (
               <KpiBox value={`${result.charts.avgDays}d`} label="Avg. Resolution" color='#6366F1' />
