@@ -272,7 +272,9 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         catAxisLabelColor: DARK,
         valAxisLabelFontSize: 8,
         valAxisMinVal: 0,
-        plotAreaBorderColor: GRAY_LINE,
+        plotAreaBorderColor: 'F0F0F0',
+        plotAreaBorderPt: 0.3,
+        valGridLine: { color: 'EEEEEE', pt: 0.3, style: 'solid' },
         showTitle: true,
         title: 'Issues by Network Function',
         titleFontSize: 9,
@@ -296,7 +298,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     const kpi1 = sd.kpi_1 || {}, kpi2 = sd.kpi_2 || {};
     const kpiW = (RW - 0.1) / 2;
     const maxDetail = Math.max((kpi1.detail || []).length, (kpi2.detail || []).length);
-    const KPI_H = 0.72 + Math.min(maxDetail, 5) * 0.18;
+    const KPI_H = 0.58 + Math.min(maxDetail, 5) * 0.16;
 
     [[kpi1, PINK], [kpi2, GREEN]].forEach(([kpi, color], i) => {
       const kx = RX + i * (kpiW + 0.1);
@@ -318,8 +320,9 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     });
     curY += KPI_H + 0.1;
 
-    // Helper: compute box height from item count
-    const boxH = (items, titleH = 0.28, itemH = 0.3, pad = 0.2) =>
+    // Helper: compute box height tightly from item count
+    // titleH=0.26 (title line), itemH=0.26 (each item ~1 line at 9pt), pad=0.18 (top+bottom padding)
+    const boxH = (items, titleH = 0.26, itemH = 0.26, pad = 0.18) =>
       titleH + items.length * itemH + pad;
 
     // Achievements (green)
@@ -371,7 +374,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     curY += NS_H + 0.1;
 
     // Call to Action (light pink, PINK border)
-    const CTA_H = 0.52;
+    const CTA_H = 0.44;
     slide.addShape(pptx.ShapeType.roundRect, {
       x: RX, y: curY, w: RW, h: CTA_H,
       fill: { color: PINK_LIGHT }, line: { color: PINK, pt: 2 }, rectRadius: 0.07,
