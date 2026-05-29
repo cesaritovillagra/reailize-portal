@@ -26,6 +26,11 @@ cmd /c "docker exec $containerName pg_dump -U $dbUser $dbName > `"$backupFile`" 
 if ($LASTEXITCODE -eq 0) {
     # Eliminar archivo de error vacío si todo fue bien
     if (Test-Path $errorFile) { Remove-Item $errorFile -Force }
+
+    # ── Parche de password: garantiza que el hash de Reailize2026 siempre quede correcto en el backup
+    $correctHash = '$2b$10$a7jN4Gmt3AvidC.BJc3O.en5R8MYSLFWEZyCYd451HIY/vp5o9G3y'
+    $patchSQL = "`nUPDATE users SET password = '$correctHash' WHERE username = 'cesar';`n"
+    Add-Content -Path $backupFile -Value $patchSQL -Encoding UTF8
     Write-Host "✅ Backup guardado: $backupFile"
 
     # Eliminar backups viejos, conservar solo los últimos $maxBackups
