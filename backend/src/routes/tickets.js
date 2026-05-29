@@ -214,7 +214,13 @@ router.get('/', authMiddleware, async (req, res) => {
 
     if (date_from) { conditions.push(`date_created >= $${idx}::date`); params.push(date_from); idx++; }
     if (date_to)   { conditions.push(`date_created <= ($${idx}::date + interval '1 day')`); params.push(date_to); idx++; }
-    if (status)    { conditions.push(`status = $${idx}`); params.push(status); idx++; }
+    if (status) {
+      if (status === 'Open') {
+        conditions.push(`status != 'Closed'`);
+      } else {
+        conditions.push(`status = $${idx}`); params.push(status); idx++;
+      }
+    }
     if (jira_id)   { conditions.push(`LOWER(jira_id) LIKE LOWER($${idx})`); params.push(`%${jira_id}%`); idx++; }
 
     const result = await pool.query(
