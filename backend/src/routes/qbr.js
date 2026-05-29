@@ -25,7 +25,7 @@ async function beautifyMarkdown(rawContent) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 4000,
+    max_tokens: 8000,
     messages: [{
       role: 'user',
       content: `You are a markdown formatting expert. Take the following content and reformat it using proper Markdown so it looks clean, organized, and visually appealing when rendered.
@@ -137,164 +137,250 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     const PINK       = 'F40085';
     const WHITE      = 'FFFFFF';
     const DARK       = '2D2D2D';
-    const MUTED_C    = '888888';
-    const CYAN_C     = '3B82F6';
-    const GREEN_C    = '00A878';
-    const ORANGE_C   = 'E07000';
+    const MUTED      = '888888';
+    const CYAN       = '3B82F6';
+    const GREEN      = '00A878';
+    const ORANGE     = 'E07000';
+    const PURPLE     = '8B5CF6';
     const GREEN_BG   = 'E8F5EF';
     const ORANGE_BG  = 'FFF3E0';
     const CYAN_BG    = 'E8F0FE';
     const PINK_LIGHT = 'FDE8F3';
-    const GRAY_DIV   = 'DDDDDD';
-    const SLIDE_BG   = 'FFFFFF';
+    const YELLOW_BG  = 'FFFDE7';
+    const GRAY_LINE  = 'DDDDDD';
 
+    // Multiple bar colors for NF chart
+    const BAR_COLORS = [PINK, CYAN, GREEN, ORANGE, PURPLE, '14B8A6', 'F59E0B', 'EC4899'];
+
+    // Normalize items (support both string[] and {icon,text}[])
+    const norm = (items) => (items || []).map(i =>
+      typeof i === 'string' ? { icon: '•', text: i } : i
+    );
+
+    const sd = slide_data || {};
     const slide = pptx.addSlide();
-    slide.background = { color: SLIDE_BG };
+    slide.background = { color: WHITE };
 
     // ── HEADER BAR ───────────────────────────────────────────────────────────
     slide.addShape(pptx.ShapeType.rect, {
-      x: 0, y: 0, w: 13.33, h: 0.52,
+      x: 0, y: 0, w: 13.33, h: 0.48,
       fill: { color: PINK }, line: { color: PINK, pt: 0 },
     });
-    slide.addText(slide_data.slide_title || `${project_name} — QBR`, {
-      x: 0.25, y: 0.07, w: 9.8, h: 0.38,
-      fontSize: 15, bold: true, color: WHITE, fontFace: 'Calibri', valign: 'middle',
+    slide.addText(sd.slide_title || `${project_name} — QBR`, {
+      x: 0.25, y: 0.06, w: 9.8, h: 0.36,
+      fontSize: 14, bold: true, color: WHITE, fontFace: 'Calibri', valign: 'middle',
     });
-    slide.addText(slide_data.period_label || `${date_from} – ${date_to}`, {
-      x: 10.2, y: 0.07, w: 2.9, h: 0.38,
-      fontSize: 11, color: WHITE, fontFace: 'Calibri', align: 'right', valign: 'middle',
+    slide.addText(sd.period_label || `${date_from} – ${date_to}`, {
+      x: 10.1, y: 0.06, w: 3.0, h: 0.36,
+      fontSize: 10, color: WHITE, fontFace: 'Calibri', align: 'right', valign: 'middle',
     });
 
     // ── VERTICAL DIVIDER ─────────────────────────────────────────────────────
     slide.addShape(pptx.ShapeType.rect, {
-      x: 6.48, y: 0.63, w: 0.012, h: 4.6,
-      fill: { color: GRAY_DIV }, line: { color: GRAY_DIV, pt: 0 },
+      x: 6.48, y: 0.58, w: 0.012, h: 6.5,
+      fill: { color: GRAY_LINE }, line: { color: GRAY_LINE, pt: 0 },
     });
 
-    // ── LEFT COLUMN: chart + KPI row ─────────────────────────────────────────
-    slide.addText('Issues by Category', {
-      x: 0.18, y: 0.66, w: 6.1, h: 0.22,
-      fontSize: 9, bold: true, color: MUTED_C, fontFace: 'Calibri',
-    });
+    // ── LEFT COLUMN ──────────────────────────────────────────────────────────
+    const LX = 0.18, LW = 6.12;
 
-    const chartData = (charts.byProblemType || [])
+    // "What Stands Out" visual panel
+    const ws = sd.what_stands_out || {};
+    const WS_H = 2.05;
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: LX, y: 0.58, w: LW, h: WS_H,
+      fill: { color: YELLOW_BG }, line: { color: GRAY_LINE, pt: 1 }, rectRadius: 0.07,
+    });
+    // Title
+    slide.addText('What Stands Out', {
+      x: LX + 0.12, y: 0.62, w: LW - 0.24, h: 0.26,
+      fontSize: 11, bold: true, color: DARK, fontFace: 'Calibri', align: 'center',
+    });
+    // Badge: big number
+    const badgeColor = ws.badge_color === 'green' ? GREEN : ws.badge_color === 'cyan' ? CYAN : PINK;
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: LX + 1.3, y: 0.93, w: 1.6, h: 0.5,
+      fill: { color: badgeColor }, line: { color: badgeColor, pt: 0 }, rectRadius: 0.06,
+    });
+    slide.addText(ws.badge_value || (charts?.totalTickets ? `${charts.totalTickets}` : '–'), {
+      x: LX + 1.3, y: 0.93, w: 1.6, h: 0.5,
+      fontSize: 20, bold: true, color: WHITE, fontFace: 'Calibri', align: 'center', valign: 'middle',
+    });
+    // Emoji next to badge
+    if (ws.badge_emoji) {
+      slide.addText(ws.badge_emoji, {
+        x: LX + 3.05, y: 0.93, w: 0.55, h: 0.5,
+        fontSize: 20, fontFace: 'Segoe UI Emoji', align: 'left', valign: 'middle',
+      });
+    }
+    // Headline
+    if (ws.headline) {
+      slide.addText(ws.headline, {
+        x: LX + 0.15, y: 1.5, w: LW - 0.3, h: 0.3,
+        fontSize: 9, color: DARK, fontFace: 'Calibri', align: 'center', wrap: true,
+      });
+    }
+    // Sub-label badge
+    if (ws.sub_label) {
+      slide.addShape(pptx.ShapeType.roundRect, {
+        x: LX + 1.7, y: 1.85, w: 2.5, h: 0.24,
+        fill: { color: GREEN }, line: { color: GREEN, pt: 0 }, rectRadius: 0.04,
+      });
+      slide.addText(ws.sub_label, {
+        x: LX + 1.7, y: 1.85, w: 2.5, h: 0.24,
+        fontSize: 8.5, bold: true, color: WHITE, fontFace: 'Calibri', align: 'center', valign: 'middle',
+      });
+    }
+    // Secondary stat
+    if (ws.secondary_stat) {
+      slide.addText(ws.secondary_stat, {
+        x: LX + 0.15, y: 2.14, w: LW - 0.3, h: 0.2,
+        fontSize: 8.5, color: PINK, fontFace: 'Calibri', align: 'center', bold: true, italic: true,
+      });
+    }
+    // Footnote
+    if (ws.footnote) {
+      slide.addText(ws.footnote, {
+        x: LX + 0.15, y: 2.38, w: LW - 0.3, h: 0.18,
+        fontSize: 7.5, color: MUTED, fontFace: 'Calibri', align: 'center', italic: true,
+      });
+    }
+
+    // NF bar chart (vertical bars, multiple colors)
+    const nfData = (charts?.byNF || [])
       .filter(d => d.label && d.label !== 'Unknown' && d.label !== 'null' && d.value > 0)
       .sort((a, b) => b.value - a.value)
-      .slice(0, 7);
+      .slice(0, 8);
 
-    if (chartData.length > 0) {
+    const CHART_Y = 0.58 + WS_H + 0.1;
+    const CHART_H = 6.1 - CHART_Y;
+
+    if (nfData.length > 0) {
       slide.addChart(pptx.ChartType.bar, [{
-        name: 'Issues',
-        labels: chartData.map(d => d.label),
-        values: chartData.map(d => d.value),
+        name: 'Network Functions',
+        labels: nfData.map(d => d.label),
+        values: nfData.map(d => d.value),
       }], {
-        x: 0.18, y: 0.9, w: 6.1, h: 3.28,
-        barDir: 'bar',
-        chartColors: [PINK],
+        x: LX, y: CHART_Y, w: LW, h: CHART_H,
+        barDir: 'col',
+        chartColors: nfData.map((_, i) => BAR_COLORS[i % BAR_COLORS.length]),
         showLegend: false,
         dataLabelPosition: 'outEnd',
         dataLabelFontSize: 9,
         dataLabelColor: DARK,
-        catAxisLabelFontSize: 9,
+        catAxisLabelFontSize: 8,
         catAxisLabelColor: DARK,
         valAxisLabelFontSize: 8,
         valAxisMinVal: 0,
-        plotAreaBorderColor: GRAY_DIV,
+        plotAreaBorderColor: GRAY_LINE,
+        showTitle: true,
+        title: 'Issues by Network Function',
+        titleFontSize: 9,
+        titleColor: MUTED,
       });
     }
 
-    // KPI box 1 — Total tickets (PINK)
-    const total = charts.totalTickets || 0;
-    slide.addShape(pptx.ShapeType.roundRect, {
-      x: 0.18, y: 4.28, w: 2.9, h: 0.98,
-      fill: { color: PINK }, line: { color: PINK, pt: 0 }, rectRadius: 0.07,
-    });
-    slide.addText([
-      { text: String(total), options: { fontSize: 24, bold: true, color: WHITE, breakLine: true } },
-      { text: 'Tickets Managed', options: { fontSize: 9, color: WHITE } },
-    ], { x: 0.18, y: 4.28, w: 2.9, h: 0.98, fontFace: 'Calibri', align: 'center', valign: 'middle' });
-
-    // KPI box 2 — Avg resolution (CYAN)
-    const avgLabel = charts.avgDays != null ? `${charts.avgDays}d` : 'N/A';
-    slide.addShape(pptx.ShapeType.roundRect, {
-      x: 3.26, y: 4.28, w: 3.04, h: 0.98,
-      fill: { color: CYAN_C }, line: { color: CYAN_C, pt: 0 }, rectRadius: 0.07,
-    });
-    slide.addText([
-      { text: avgLabel, options: { fontSize: 24, bold: true, color: WHITE, breakLine: true } },
-      { text: 'Avg. Resolution', options: { fontSize: 9, color: WHITE } },
-    ], { x: 3.26, y: 4.28, w: 3.04, h: 0.98, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+    // Chart insight text below chart
+    if (sd.chart_insight) {
+      slide.addText(sd.chart_insight, {
+        x: LX, y: 6.14, w: LW, h: 0.34,
+        fontSize: 8, color: DARK, fontFace: 'Calibri', align: 'center', italic: true, wrap: true,
+      });
+    }
 
     // ── RIGHT COLUMN ─────────────────────────────────────────────────────────
-    // "What Stands Out" label
-    slide.addText('What Stands Out', {
-      x: 6.65, y: 0.66, w: 6.5, h: 0.22,
-      fontSize: 9, bold: true, color: MUTED_C, fontFace: 'Calibri',
-    });
+    const RX = 6.62, RW = 6.53;
+    let curY = 0.58;
 
-    // KPI highlight 1 (PINK)
+    // KPI boxes (2 side by side)
+    const kpi1 = sd.kpi_1 || {}, kpi2 = sd.kpi_2 || {};
+    const kpiW = (RW - 0.1) / 2;
+    const maxDetail = Math.max((kpi1.detail || []).length, (kpi2.detail || []).length);
+    const KPI_H = 0.72 + Math.min(maxDetail, 5) * 0.18;
+
+    [[kpi1, PINK], [kpi2, GREEN]].forEach(([kpi, color], i) => {
+      const kx = RX + i * (kpiW + 0.1);
+      slide.addShape(pptx.ShapeType.roundRect, {
+        x: kx, y: curY, w: kpiW, h: KPI_H,
+        fill: { color }, line: { color, pt: 0 }, rectRadius: 0.07,
+      });
+      const parts = [];
+      if (kpi.emoji) parts.push({ text: kpi.emoji + ' ', options: { fontSize: 14, fontFace: 'Segoe UI Emoji', color: WHITE } });
+      parts.push({ text: (kpi.value || '–') + '\n', options: { fontSize: 20, bold: true, color: WHITE, fontFace: 'Calibri' } });
+      parts.push({ text: (kpi.label || '') + '\n', options: { fontSize: 8.5, color: WHITE, fontFace: 'Calibri' } });
+      (kpi.detail || []).slice(0, 5).forEach(d => {
+        parts.push({ text: '• ' + d + '\n', options: { fontSize: 7.5, color: WHITE, fontFace: 'Calibri' } });
+      });
+      slide.addText(parts, {
+        x: kx + 0.1, y: curY + 0.08, w: kpiW - 0.2, h: KPI_H - 0.1,
+        fontFace: 'Calibri', align: 'center', valign: 'top', wrap: true,
+      });
+    });
+    curY += KPI_H + 0.1;
+
+    // Helper: compute box height from item count
+    const boxH = (items, titleH = 0.28, itemH = 0.3, pad = 0.2) =>
+      titleH + items.length * itemH + pad;
+
+    // Achievements (green)
+    const achievements = norm(sd.achievements);
+    const ACH_H = boxH(achievements);
     slide.addShape(pptx.ShapeType.roundRect, {
-      x: 6.65, y: 0.9, w: 3.08, h: 1.1,
-      fill: { color: PINK }, line: { color: PINK, pt: 0 }, rectRadius: 0.07,
+      x: RX, y: curY, w: RW, h: ACH_H,
+      fill: { color: GREEN_BG }, line: { color: GREEN, pt: 1.5 }, rectRadius: 0.07,
     });
     slide.addText([
-      { text: (slide_data.kpi_1?.value || '–'), options: { fontSize: 26, bold: true, color: WHITE, breakLine: true } },
-      { text: (slide_data.kpi_1?.label || ''), options: { fontSize: 9, color: WHITE } },
-    ], { x: 6.65, y: 0.9, w: 3.08, h: 1.1, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+      { text: '✅  Key Achievements\n', options: { fontSize: 10, bold: true, color: GREEN, fontFace: 'Calibri' } },
+      ...achievements.map(a => ([
+        { text: (a.icon || '•') + '  ', options: { fontSize: 9, fontFace: 'Segoe UI Emoji', color: DARK } },
+        { text: (a.text || '') + '\n', options: { fontSize: 9, color: DARK, fontFace: 'Calibri' } },
+      ])).flat(),
+    ], { x: RX + 0.12, y: curY + 0.08, w: RW - 0.24, h: ACH_H - 0.1, fontFace: 'Calibri', valign: 'top', wrap: true });
+    curY += ACH_H + 0.1;
 
-    // KPI highlight 2 (GREEN)
+    // Challenges (orange)
+    const challenges = norm(sd.challenges);
+    const CHAL_H = boxH(challenges);
     slide.addShape(pptx.ShapeType.roundRect, {
-      x: 9.87, y: 0.9, w: 3.28, h: 1.1,
-      fill: { color: GREEN_C }, line: { color: GREEN_C, pt: 0 }, rectRadius: 0.07,
+      x: RX, y: curY, w: RW, h: CHAL_H,
+      fill: { color: ORANGE_BG }, line: { color: ORANGE, pt: 1.5 }, rectRadius: 0.07,
     });
     slide.addText([
-      { text: (slide_data.kpi_2?.value || '–'), options: { fontSize: 26, bold: true, color: WHITE, breakLine: true } },
-      { text: (slide_data.kpi_2?.label || ''), options: { fontSize: 9, color: WHITE } },
-    ], { x: 9.87, y: 0.9, w: 3.28, h: 1.1, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+      { text: '⚠️  Challenges\n', options: { fontSize: 10, bold: true, color: ORANGE, fontFace: 'Segoe UI Emoji' } },
+      ...challenges.map(c => ([
+        { text: (c.icon || '•') + '  ', options: { fontSize: 9, fontFace: 'Segoe UI Emoji', color: DARK } },
+        { text: (c.text || '') + '\n', options: { fontSize: 9, color: DARK, fontFace: 'Calibri' } },
+      ])).flat(),
+    ], { x: RX + 0.12, y: curY + 0.08, w: RW - 0.24, h: CHAL_H - 0.1, fontFace: 'Calibri', valign: 'top', wrap: true });
+    curY += CHAL_H + 0.1;
 
-    // Achievements box (green bg)
-    const achievements = slide_data.achievements || [];
+    // Next Steps (cyan)
+    const nextSteps = norm(sd.next_steps);
+    const NS_H = boxH(nextSteps);
     slide.addShape(pptx.ShapeType.roundRect, {
-      x: 6.65, y: 2.12, w: 6.5, h: 1.88,
-      fill: { color: GREEN_BG }, line: { color: GREEN_C, pt: 1.5 }, rectRadius: 0.07,
+      x: RX, y: curY, w: RW, h: NS_H,
+      fill: { color: CYAN_BG }, line: { color: CYAN, pt: 1.5 }, rectRadius: 0.07,
     });
     slide.addText([
-      { text: '✅  Key Achievements\n', options: { fontSize: 10, bold: true, color: GREEN_C } },
-      ...achievements.map(a => ({ text: `• ${a}\n`, options: { fontSize: 9.5, color: DARK } })),
-    ], { x: 6.78, y: 2.17, w: 6.24, h: 1.78, fontFace: 'Calibri', valign: 'top', wrap: true });
-
-    // Challenges box (orange bg)
-    const challenges = slide_data.challenges || [];
-    slide.addShape(pptx.ShapeType.roundRect, {
-      x: 6.65, y: 4.1, w: 6.5, h: 1.15,
-      fill: { color: ORANGE_BG }, line: { color: ORANGE_C, pt: 1.5 }, rectRadius: 0.07,
-    });
-    slide.addText([
-      { text: '⚠️  Challenges\n', options: { fontSize: 10, bold: true, color: ORANGE_C } },
-      ...challenges.map(c => ({ text: `• ${c}\n`, options: { fontSize: 9.5, color: DARK } })),
-    ], { x: 6.78, y: 4.15, w: 6.24, h: 1.05, fontFace: 'Calibri', valign: 'top', wrap: true });
-
-    // ── BOTTOM STRIP ─────────────────────────────────────────────────────────
-    // Next Steps (cyan bg)
-    const nextSteps = slide_data.next_steps || [];
-    slide.addShape(pptx.ShapeType.roundRect, {
-      x: 0.18, y: 5.38, w: 6.1, h: 1.9,
-      fill: { color: CYAN_BG }, line: { color: CYAN_C, pt: 1.5 }, rectRadius: 0.07,
-    });
-    slide.addText([
-      { text: '🎯  Next Steps & Targets\n', options: { fontSize: 10, bold: true, color: CYAN_C } },
-      ...nextSteps.map(n => ({ text: `• ${n}\n`, options: { fontSize: 9.5, color: DARK } })),
-    ], { x: 0.3, y: 5.44, w: 5.9, h: 1.78, fontFace: 'Calibri', valign: 'top', wrap: true });
+      { text: '🎯  Next Steps & Targets\n', options: { fontSize: 10, bold: true, color: CYAN, fontFace: 'Segoe UI Emoji' } },
+      ...nextSteps.map(n => ([
+        { text: (n.icon || '•') + '  ', options: { fontSize: 9, fontFace: 'Segoe UI Emoji', color: DARK } },
+        { text: (n.text || '') + '\n', options: { fontSize: 9, color: DARK, fontFace: 'Calibri' } },
+      ])).flat(),
+    ], { x: RX + 0.12, y: curY + 0.08, w: RW - 0.24, h: NS_H - 0.1, fontFace: 'Calibri', valign: 'top', wrap: true });
+    curY += NS_H + 0.1;
 
     // Call to Action (light pink, PINK border)
+    const CTA_H = 0.52;
     slide.addShape(pptx.ShapeType.roundRect, {
-      x: 6.65, y: 5.38, w: 6.5, h: 1.9,
+      x: RX, y: curY, w: RW, h: CTA_H,
       fill: { color: PINK_LIGHT }, line: { color: PINK, pt: 2 }, rectRadius: 0.07,
     });
     slide.addText([
-      { text: '📢  Call to Action\n', options: { fontSize: 10, bold: true, color: PINK } },
-      { text: slide_data.call_to_action || '', options: { fontSize: 10, color: DARK } },
-    ], { x: 6.78, y: 5.44, w: 6.24, h: 1.78, fontFace: 'Calibri', valign: 'top', wrap: true });
+      { text: '📢  ', options: { fontSize: 10, fontFace: 'Segoe UI Emoji' } },
+      { text: 'Call to Action: ', options: { fontSize: 10, bold: true, color: PINK, fontFace: 'Calibri' } },
+      { text: sd.call_to_action || '', options: { fontSize: 9.5, color: DARK, fontFace: 'Calibri' } },
+    ], { x: RX + 0.12, y: curY + 0.07, w: RW - 0.24, h: CTA_H - 0.1, fontFace: 'Calibri', valign: 'middle', wrap: true });
 
     const buffer = await pptx.write({ outputType: 'nodebuffer' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
@@ -303,7 +389,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error al generar PowerPoint' });
+    res.status(500).json({ error: 'Error al generar PowerPoint: ' + err.message });
   }
 });
 
@@ -386,24 +472,62 @@ Generate content for ONE executive QBR slide. Return ONLY valid JSON — no mark
 
 JSON structure (exact):
 {
-  "slide_title": "short title, e.g. 'IoT 5GSA Platform — Q1 2026 QBR'",
+  "slide_title": "e.g. 'IoT 5GSA Platform — Q1 2026 QBR'",
   "period_label": "e.g. 'Jan – Mar 2026'",
-  "kpi_1": { "value": "XX%", "label": "max 3 words" },
-  "kpi_2": { "value": "XX", "label": "max 3 words" },
-  "achievements": ["bullet 1 (max 15 words)", "bullet 2 (max 15 words)", "bullet 3 (max 15 words)"],
-  "challenges": ["challenge 1 (max 15 words)", "challenge 2 (max 15 words)"],
-  "next_steps": ["step 1 (max 12 words)", "step 2 (max 12 words)", "step 3 (max 12 words)"],
-  "call_to_action": "one sentence, max 20 words, specific and actionable"
+
+  "kpi_1": {
+    "value": "83%",
+    "label": "Tickets Closed",
+    "emoji": "✅",
+    "detail": ["29 of 35 tickets resolved", "Top NF: SMF (12 issues)"]
+  },
+  "kpi_2": {
+    "value": "6",
+    "label": "OEMs Unblocked",
+    "emoji": "🏭",
+    "detail": ["Honda", "Ericsson", "Nokia", "Samsung", "ZTE", "Huawei"]
+  },
+
+  "what_stands_out": {
+    "badge_value": "79%",
+    "badge_color": "pink",
+    "badge_emoji": "👍",
+    "headline": "of issues resolved through Tier 1 + Tier 2 collaboration path",
+    "sub_label": "Q1-26 Snapshot",
+    "secondary_stat": "~21d avg. resolution — lowest in 4 quarters",
+    "footnote": "Excludes tickets without Tier 2 involvement"
+  },
+
+  "chart_insight": "One sentence summarizing the NF chart — e.g. 'SMF and CHF drove 60% of all issues — infrastructure stability is the critical path'",
+
+  "achievements": [
+    { "icon": "🔧", "text": "Achievement 1 — max 15 words, executive tone, apply So What test" },
+    { "icon": "📋", "text": "Achievement 2" },
+    { "icon": "🔍", "text": "Achievement 3" }
+  ],
+  "challenges": [
+    { "icon": "⚠️", "text": "Challenge 1 — max 15 words, concise" },
+    { "icon": "🚫", "text": "Challenge 2" }
+  ],
+  "next_steps": [
+    { "icon": "🎯", "text": "Next step 1 — max 12 words, forward-looking and actionable" },
+    { "icon": "🔬", "text": "Next step 2" },
+    { "icon": "🛡️", "text": "Next step 3" }
+  ],
+  "call_to_action": "One specific sentence, max 20 words, action required from management or partners"
 }
 
 RULES:
-- kpi_1 and kpi_2: the 2 most impactful numbers from the period (e.g. "${closedPct}% Closed", "${avgDays != null ? avgDays + 'd Avg Resolution' : tier1Pct + '% Tier 1-led'}")
-- achievements: top 3 accomplishments. Executive tone. Apply "So What" test. Each is one bullet, no sub-bullets.
-- challenges: 1-2 active blockers or risks, very concise
-- next_steps: 2-3 forward-looking actions, very concise
-- call_to_action: specific action required from management or partners
-- ALL text in English
-- Return ONLY the JSON object`;
+- kpi_1: most impactful % metric (e.g. ${closedPct}% closed rate). detail[] = up to 4 supporting facts.
+- kpi_2: most impactful count metric (e.g. OEMs, tickets, NFs). detail[] = list the actual names/items when applicable.
+- what_stands_out: the single most impressive insight from the period. badge_value = the key number. headline = context sentence. sub_label = period snapshot label. secondary_stat = supporting data point in italic. footnote = caveat if needed.
+- chart_insight: one-sentence "so what" for the Network Functions chart.
+- achievements: top 3. Icon must be a relevant emoji. Text max 15 words, executive tone, "So What" test applied.
+- challenges: 1-2 active blockers/risks. Concise. Relevant emoji icon.
+- next_steps: 2-3 forward-looking actions. Concise. Relevant emoji icon.
+- call_to_action: specific ask to management/partners.
+- ALL text in English.
+- Return ONLY the JSON object, no markdown, no code fences.`;
 }
 
 function formatDate(d) {
