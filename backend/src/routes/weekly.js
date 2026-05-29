@@ -190,7 +190,8 @@ router.post('/export', authMiddleware, async (req, res) => {
 
   const STATUS_COLORS = { blue: '3B82F6', green: '00A878', orange: 'FF8C00', red: 'D32F2F' };
   const STATUS_LABELS = { blue: 'COMPLETED', green: 'ON TRACK', orange: 'BLOCKED', red: 'CRITICAL' };
-  const ICON_MAP      = { alert: '⚠', pin: '📌', warning: '⚠', bell: '🔔', normal: '●' };
+  const ICON_MAP      = { alert: '🚨', pin: '📌', warning: '⚠️', bell: '🔔', normal: '●' };
+  const EMOJI_ICONS   = new Set(['alert', 'pin', 'warning', 'bell']);
 
   // Parse **bold** and also color "COMPLETED" / "→ COMPLETED" in ACC
   function parseRichText(text, fontSize) {
@@ -226,16 +227,6 @@ router.post('/export', authMiddleware, async (req, res) => {
       const slide = pres.addSlide();
       slide.background = { color: WHITE };
 
-      // Top magenta bar
-      slide.addShape(pres.shapes.RECTANGLE, {
-        x: 0, y: 0, w: 13.3, h: 0.18,
-        fill: { color: ACC }, line: { color: ACC, pt: 0 },
-      });
-      // Bottom magenta bar
-      slide.addShape(pres.shapes.RECTANGLE, {
-        x: 0, y: 7.32, w: 13.3, h: 0.18,
-        fill: { color: ACC }, line: { color: ACC, pt: 0 },
-      });
 
       // Slide header
       slide.addText('Weekly Status Report', {
@@ -274,9 +265,15 @@ router.post('/export', authMiddleware, async (req, res) => {
         const fillC = idx % 2 === 0 ? ROW_ODD : ROW_EVEN;
         const jiras = (item.jiras || []).join('  ·  ');
 
+        // Emoji icons render natively in Office with Segoe UI Emoji (no color override needed)
+        const isEmoji = EMOJI_ICONS.has(item.icon);
+        const iconRun = isEmoji
+          ? { text: icon + '  ', options: { fontSize: 13, fontFace: 'Segoe UI Emoji' } }
+          : { text: icon + '  ', options: { fontSize: 13, fontFace: 'Calibri', color: DARK } };
+
         // Left cell: icon + title + JIRA IDs
         const leftParts = [
-          { text: icon + '  ', options: { fontSize: 13, fontFace: 'Calibri', color: DARK } },
+          iconRun,
           { text: (item.milestone || '') + '\n', options: { fontSize: 11, bold: true, color: DARK, fontFace: 'Calibri' } },
         ];
         if (jiras) {
