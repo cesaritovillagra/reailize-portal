@@ -25,7 +25,7 @@ function DateField({ value, onChange, lang }) {
         fontFamily: 'Inter, sans-serif',
         whiteSpace: 'nowrap', minWidth: 110,
       }}>
-        {formatDateDisplay(value, lang)}
+        {value ? formatDateDisplay(value, lang) : <span style={{ color: '#6b6b80' }}>dd/mm/aaaa</span>}
       </div>
       <input
         ref={pickerRef}

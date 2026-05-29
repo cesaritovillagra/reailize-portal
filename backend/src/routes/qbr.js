@@ -1,12 +1,12 @@
-const express  = require('express');
-const pool     = require('../db/pool');
+const express   = require('express');
+const pool      = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
-const Anthropic = require('@anthropic-ai/sdk');
-const PptxGenJS = require('pptxgenjs');
+const Anthropic  = require('@anthropic-ai/sdk');
+const PptxGenJS  = require('pptxgenjs');
 
 const router = express.Router();
 
-// GET /api/qbr/config?project_id=X
+// ─── GET /api/qbr/config ──────────────────────────────────────────────────────
 router.get('/config', authMiddleware, async (req, res) => {
   const { project_id } = req.query;
   try {
@@ -14,17 +14,13 @@ router.get('/config', authMiddleware, async (req, res) => {
       'SELECT content FROM qbr_configs WHERE user_id=$1 AND project_id=$2',
       [req.user.id, project_id]
     );
-    if (result.rows.length === 0) {
-      // Return default methodology
-      res.json({ content: DEFAULT_QBR_METHODOLOGY });
-    } else {
-      res.json({ content: result.rows[0].content });
-    }
+    res.json({ content: result.rows[0]?.content || DEFAULT_QBR_METHODOLOGY });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
 
+// ─── Beautify markdown (for config saving) ────────────────────────────────────
 async function beautifyMarkdown(rawContent) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
@@ -52,20 +48,15 @@ ${rawContent}`
   return message.content[0].text.trim();
 }
 
-// PUT /api/qbr/config
+// ─── PUT /api/qbr/config ──────────────────────────────────────────────────────
 router.put('/config', authMiddleware, async (req, res) => {
   const { project_id, content } = req.body;
   try {
-    // Auto-beautify before saving (skip if content is empty)
     let formatted = content;
     if (content && content.trim().length > 0) {
-      try {
-        formatted = await beautifyMarkdown(content);
-      } catch (e) {
-        console.error('Beautify error (saving raw):', e.message);
-      }
+      try { formatted = await beautifyMarkdown(content); }
+      catch (e) { console.error('Beautify error:', e.message); }
     }
-
     await pool.query(
       `INSERT INTO qbr_configs (user_id, project_id, content)
        VALUES ($1,$2,$3)
@@ -78,9 +69,9 @@ router.put('/config', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/qbr/generate — generate QBR content
+// ─── POST /api/qbr/generate ───────────────────────────────────────────────────
 router.post('/generate', authMiddleware, async (req, res) => {
-  const { project_id, date_from, date_to, lang } = req.body;
+  const { project_id, date_from, date_to } = req.body;
   try {
     const [ticketsRes, configRes] = await Promise.all([
       pool.query(
@@ -99,199 +90,252 @@ router.post('/generate', authMiddleware, async (req, res) => {
     const config  = configRes.rows[0]?.content || DEFAULT_QBR_METHODOLOGY;
 
     if (tickets.length === 0)
-      return res.status(400).json({ error: lang === 'en' ? 'No tickets found in that date range' : 'No hay tickets en ese rango de fechas' });
+      return res.status(400).json({ error: 'No hay tickets en ese rango de fechas' });
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const prompt = buildQBRPrompt(tickets, config, date_from, date_to, req.user, lang || 'es');
-
+    const client  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const prompt  = buildQBRPrompt(tickets, config, date_from, date_to, req.user);
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 4000,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const qbrText = message.content[0].text;
+    // Parse JSON response
+    let slide_data;
+    try {
+      const raw = message.content[0].text.trim().replace(/^```json\s*/,'').replace(/```$/,'');
+      slide_data = JSON.parse(raw);
+    } catch (e) {
+      console.error('JSON parse error:', e.message, message.content[0].text.substring(0, 200));
+      return res.status(500).json({ error: 'Error al parsear respuesta de la IA' });
+    }
 
-    // Build charts data
     const charts = buildChartsData(tickets);
 
     // Save report
     await pool.query(
       'INSERT INTO qbr_reports (user_id, project_id, date_from, date_to, content) VALUES ($1,$2,$3,$4,$5)',
-      [req.user.id, project_id, date_from, date_to, qbrText]
+      [req.user.id, project_id, date_from, date_to, JSON.stringify(slide_data)]
     );
 
-    res.json({ content: qbrText, charts });
+    res.json({ slide_data, charts });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al generar QBR' });
   }
 });
 
-// POST /api/qbr/export-pptx — export to PowerPoint
+// ─── POST /api/qbr/export-pptx ────────────────────────────────────────────────
 router.post('/export-pptx', authMiddleware, async (req, res) => {
-  const { content, charts, date_from, date_to, project_name } = req.body;
+  const { slide_data, charts, date_from, date_to, project_name } = req.body;
 
   try {
     const pptx = new PptxGenJS();
-    pptx.layout = 'LAYOUT_WIDE';
+    pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches
 
-    // Brand colors
-    const PINK    = 'F40085';
-    const DARK    = '4D4D4D';
-    const LIGHT   = 'AFAEAF';
-    const CYAN    = '7AD0E2';
-    const BLACK   = '0D0D0D';
-    const WHITE   = 'FFFFFF';
+    // ── Palette ──────────────────────────────────────────────────────────────
+    const PINK       = 'F40085';
+    const WHITE      = 'FFFFFF';
+    const DARK       = '2D2D2D';
+    const MUTED_C    = '888888';
+    const CYAN_C     = '3B82F6';
+    const GREEN_C    = '00A878';
+    const ORANGE_C   = 'E07000';
+    const GREEN_BG   = 'E8F5EF';
+    const ORANGE_BG  = 'FFF3E0';
+    const CYAN_BG    = 'E8F0FE';
+    const PINK_LIGHT = 'FDE8F3';
+    const GRAY_DIV   = 'DDDDDD';
+    const SLIDE_BG   = 'FFFFFF';
 
-    // --- SLIDE 1: Cover ---
-    const cover = pptx.addSlide();
-    cover.background = { color: BLACK };
-    cover.addText('reailize', {
-      x: 0.5, y: 1.5, w: 9, h: 1.2,
-      fontSize: 54, bold: true, color: WHITE,
-      fontFace: 'Arial'
+    const slide = pptx.addSlide();
+    slide.background = { color: SLIDE_BG };
+
+    // ── HEADER BAR ───────────────────────────────────────────────────────────
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 0, y: 0, w: 13.33, h: 0.52,
+      fill: { color: PINK }, line: { color: PINK, pt: 0 },
     });
-    cover.addText('ai', {
-      x: 1.72, y: 1.5, w: 1.1, h: 1.2,
-      fontSize: 54, bold: true, color: PINK,
-      fontFace: 'Arial'
+    slide.addText(slide_data.slide_title || `${project_name} — QBR`, {
+      x: 0.25, y: 0.07, w: 9.8, h: 0.38,
+      fontSize: 15, bold: true, color: WHITE, fontFace: 'Calibri', valign: 'middle',
     });
-    cover.addText('Quarterly Business Review', {
-      x: 0.5, y: 2.9, w: 9, h: 0.6,
-      fontSize: 22, color: LIGHT, fontFace: 'Arial'
-    });
-    cover.addText(`${formatDate(date_from)} — ${formatDate(date_to)}`, {
-      x: 0.5, y: 3.6, w: 9, h: 0.5,
-      fontSize: 16, color: CYAN, fontFace: 'Arial'
-    });
-    cover.addText(project_name || 'Project', {
-      x: 0.5, y: 4.2, w: 9, h: 0.5,
-      fontSize: 14, color: LIGHT, fontFace: 'Arial'
-    });
-    cover.addShape(pptx.ShapeType.rect, {
-      x: 0.5, y: 5.0, w: 2, h: 0.06, fill: { color: PINK }
+    slide.addText(slide_data.period_label || `${date_from} – ${date_to}`, {
+      x: 10.2, y: 0.07, w: 2.9, h: 0.38,
+      fontSize: 11, color: WHITE, fontFace: 'Calibri', align: 'right', valign: 'middle',
     });
 
-    // --- SLIDE 2: Charts ---
-    const chartSlide = pptx.addSlide();
-    chartSlide.background = { color: '13131A' };
-    chartSlide.addText('Metrics Overview', {
-      x: 0.4, y: 0.2, w: 9, h: 0.6,
-      fontSize: 20, bold: true, color: WHITE, fontFace: 'Arial'
-    });
-    chartSlide.addShape(pptx.ShapeType.rect, {
-      x: 0.4, y: 0.75, w: 1.5, h: 0.05, fill: { color: PINK }
+    // ── VERTICAL DIVIDER ─────────────────────────────────────────────────────
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 6.48, y: 0.63, w: 0.012, h: 4.6,
+      fill: { color: GRAY_DIV }, line: { color: GRAY_DIV, pt: 0 },
     });
 
-    // Chart 1: By Status
-    chartSlide.addChart(pptx.ChartType.doughnut, [{
-      name: 'Status',
-      labels: charts.byStatus.map(d => d.label),
-      values: charts.byStatus.map(d => d.value)
-    }], {
-      x: 0.3, y: 1.0, w: 4.3, h: 2.8,
-      title: 'Tickets by Status',
-      titleFontSize: 12, titleColor: WHITE,
-      dataLabelColor: WHITE, dataLabelFontSize: 11,
-      chartColors: [PINK, CYAN, '00D084'],
-      showLegend: true, legendColor: WHITE, legendFontSize: 10
+    // ── LEFT COLUMN: chart + KPI row ─────────────────────────────────────────
+    slide.addText('Issues by Category', {
+      x: 0.18, y: 0.66, w: 6.1, h: 0.22,
+      fontSize: 9, bold: true, color: MUTED_C, fontFace: 'Calibri',
     });
 
-    // Chart 2: TPM vs Tier1
-    chartSlide.addChart(pptx.ChartType.doughnut, [{
-      name: 'Ownership',
-      labels: charts.byOwnership.map(d => d.label),
-      values: charts.byOwnership.map(d => d.value)
-    }], {
-      x: 5.0, y: 1.0, w: 4.3, h: 2.8,
-      title: 'TPM-led vs Tier 1-led',
-      titleFontSize: 12, titleColor: WHITE,
-      dataLabelColor: WHITE, dataLabelFontSize: 11,
-      chartColors: [PINK, CYAN],
-      showLegend: true, legendColor: WHITE, legendFontSize: 10
-    });
+    const chartData = (charts.byProblemType || [])
+      .filter(d => d.label && d.label !== 'Unknown' && d.label !== 'null' && d.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 7);
 
-    // Chart 3: By Problem Type
-    chartSlide.addChart(pptx.ChartType.bar, [{
-      name: 'Problem Type',
-      labels: charts.byProblemType.map(d => d.label),
-      values: charts.byProblemType.map(d => d.value)
-    }], {
-      x: 0.3, y: 4.0, w: 4.3, h: 2.8,
-      title: 'Distribution by Problem Type',
-      titleFontSize: 12, titleColor: WHITE,
-      dataLabelColor: WHITE, dataLabelFontSize: 10,
-      chartColors: [PINK],
-      catAxisLabelColor: WHITE, catAxisLabelFontSize: 9,
-      valAxisLabelColor: WHITE
-    });
-
-    // Chart 4: By Network Function
-    chartSlide.addChart(pptx.ChartType.bar, [{
-      name: 'Network Functions',
-      labels: charts.byNF.map(d => d.label),
-      values: charts.byNF.map(d => d.value)
-    }], {
-      x: 5.0, y: 4.0, w: 4.3, h: 2.8,
-      title: 'Network Functions Involved',
-      titleFontSize: 12, titleColor: WHITE,
-      dataLabelColor: WHITE, dataLabelFontSize: 10,
-      chartColors: [CYAN],
-      catAxisLabelColor: WHITE, catAxisLabelFontSize: 9,
-      valAxisLabelColor: WHITE
-    });
-
-    // --- CONTENT SLIDES ---
-    const sections = parseQBRSections(content);
-    sections.forEach(section => {
-      const slide = pptx.addSlide();
-      slide.background = { color: '13131A' };
-      slide.addText(section.title, {
-        x: 0.4, y: 0.2, w: 9, h: 0.6,
-        fontSize: 20, bold: true, color: WHITE, fontFace: 'Arial'
+    if (chartData.length > 0) {
+      slide.addChart(pptx.ChartType.bar, [{
+        name: 'Issues',
+        labels: chartData.map(d => d.label),
+        values: chartData.map(d => d.value),
+      }], {
+        x: 0.18, y: 0.9, w: 6.1, h: 3.28,
+        barDir: 'bar',
+        chartColors: [PINK],
+        showLegend: false,
+        dataLabelPosition: 'outEnd',
+        dataLabelFontSize: 9,
+        dataLabelColor: DARK,
+        catAxisLabelFontSize: 9,
+        catAxisLabelColor: DARK,
+        valAxisLabelFontSize: 8,
+        valAxisMinVal: 0,
+        plotAreaBorderColor: GRAY_DIV,
       });
-      slide.addShape(pptx.ShapeType.rect, {
-        x: 0.4, y: 0.75, w: 1.5, h: 0.05, fill: { color: PINK }
-      });
-      slide.addText(section.content, {
-        x: 0.4, y: 1.0, w: 9, h: 5.5,
-        fontSize: 13, color: 'D0D0D8', fontFace: 'Arial',
-        valign: 'top', wrap: true, bullet: { type: 'bullet', color: PINK }
-      });
+    }
+
+    // KPI box 1 — Total tickets (PINK)
+    const total = charts.totalTickets || 0;
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 0.18, y: 4.28, w: 2.9, h: 0.98,
+      fill: { color: PINK }, line: { color: PINK, pt: 0 }, rectRadius: 0.07,
     });
+    slide.addText([
+      { text: String(total), options: { fontSize: 24, bold: true, color: WHITE, breakLine: true } },
+      { text: 'Tickets Managed', options: { fontSize: 9, color: WHITE } },
+    ], { x: 0.18, y: 4.28, w: 2.9, h: 0.98, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+
+    // KPI box 2 — Avg resolution (CYAN)
+    const avgLabel = charts.avgDays != null ? `${charts.avgDays}d` : 'N/A';
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 3.26, y: 4.28, w: 3.04, h: 0.98,
+      fill: { color: CYAN_C }, line: { color: CYAN_C, pt: 0 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: avgLabel, options: { fontSize: 24, bold: true, color: WHITE, breakLine: true } },
+      { text: 'Avg. Resolution', options: { fontSize: 9, color: WHITE } },
+    ], { x: 3.26, y: 4.28, w: 3.04, h: 0.98, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+
+    // ── RIGHT COLUMN ─────────────────────────────────────────────────────────
+    // "What Stands Out" label
+    slide.addText('What Stands Out', {
+      x: 6.65, y: 0.66, w: 6.5, h: 0.22,
+      fontSize: 9, bold: true, color: MUTED_C, fontFace: 'Calibri',
+    });
+
+    // KPI highlight 1 (PINK)
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 6.65, y: 0.9, w: 3.08, h: 1.1,
+      fill: { color: PINK }, line: { color: PINK, pt: 0 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: (slide_data.kpi_1?.value || '–'), options: { fontSize: 26, bold: true, color: WHITE, breakLine: true } },
+      { text: (slide_data.kpi_1?.label || ''), options: { fontSize: 9, color: WHITE } },
+    ], { x: 6.65, y: 0.9, w: 3.08, h: 1.1, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+
+    // KPI highlight 2 (GREEN)
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 9.87, y: 0.9, w: 3.28, h: 1.1,
+      fill: { color: GREEN_C }, line: { color: GREEN_C, pt: 0 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: (slide_data.kpi_2?.value || '–'), options: { fontSize: 26, bold: true, color: WHITE, breakLine: true } },
+      { text: (slide_data.kpi_2?.label || ''), options: { fontSize: 9, color: WHITE } },
+    ], { x: 9.87, y: 0.9, w: 3.28, h: 1.1, fontFace: 'Calibri', align: 'center', valign: 'middle' });
+
+    // Achievements box (green bg)
+    const achievements = slide_data.achievements || [];
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 6.65, y: 2.12, w: 6.5, h: 1.88,
+      fill: { color: GREEN_BG }, line: { color: GREEN_C, pt: 1.5 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: '✅  Key Achievements\n', options: { fontSize: 10, bold: true, color: GREEN_C } },
+      ...achievements.map(a => ({ text: `• ${a}\n`, options: { fontSize: 9.5, color: DARK } })),
+    ], { x: 6.78, y: 2.17, w: 6.24, h: 1.78, fontFace: 'Calibri', valign: 'top', wrap: true });
+
+    // Challenges box (orange bg)
+    const challenges = slide_data.challenges || [];
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 6.65, y: 4.1, w: 6.5, h: 1.15,
+      fill: { color: ORANGE_BG }, line: { color: ORANGE_C, pt: 1.5 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: '⚠️  Challenges\n', options: { fontSize: 10, bold: true, color: ORANGE_C } },
+      ...challenges.map(c => ({ text: `• ${c}\n`, options: { fontSize: 9.5, color: DARK } })),
+    ], { x: 6.78, y: 4.15, w: 6.24, h: 1.05, fontFace: 'Calibri', valign: 'top', wrap: true });
+
+    // ── BOTTOM STRIP ─────────────────────────────────────────────────────────
+    // Next Steps (cyan bg)
+    const nextSteps = slide_data.next_steps || [];
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 0.18, y: 5.38, w: 6.1, h: 1.9,
+      fill: { color: CYAN_BG }, line: { color: CYAN_C, pt: 1.5 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: '🎯  Next Steps & Targets\n', options: { fontSize: 10, bold: true, color: CYAN_C } },
+      ...nextSteps.map(n => ({ text: `• ${n}\n`, options: { fontSize: 9.5, color: DARK } })),
+    ], { x: 0.3, y: 5.44, w: 5.9, h: 1.78, fontFace: 'Calibri', valign: 'top', wrap: true });
+
+    // Call to Action (light pink, PINK border)
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: 6.65, y: 5.38, w: 6.5, h: 1.9,
+      fill: { color: PINK_LIGHT }, line: { color: PINK, pt: 2 }, rectRadius: 0.07,
+    });
+    slide.addText([
+      { text: '📢  Call to Action\n', options: { fontSize: 10, bold: true, color: PINK } },
+      { text: slide_data.call_to_action || '', options: { fontSize: 10, color: DARK } },
+    ], { x: 6.78, y: 5.44, w: 6.24, h: 1.78, fontFace: 'Calibri', valign: 'top', wrap: true });
 
     const buffer = await pptx.write({ outputType: 'nodebuffer' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
     res.setHeader('Content-Disposition', `attachment; filename="QBR_${date_from}_${date_to}.pptx"`);
     res.send(buffer);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al generar PowerPoint' });
   }
 });
 
-// ─── Helpers ────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildChartsData(tickets) {
-  const byStatus = countBy(tickets, 'status');
-  const byOwnership = [
+  const byStatus      = countBy(tickets, 'status');
+  const byOwnership   = [
     { label: 'TPM-led (César)', value: tickets.filter(t => !t.tier1_involvement).length },
-    { label: 'Tier 1-led',      value: tickets.filter(t => t.tier1_involvement).length }
+    { label: 'Tier 1-led',      value: tickets.filter(t =>  t.tier1_involvement).length },
   ];
   const byProblemType = countBy(tickets, 'problem_type');
+
   const nfCount = {};
   tickets.forEach(t => {
-    (t.network_functions || []).forEach(nf => {
-      nfCount[nf] = (nfCount[nf] || 0) + 1;
-    });
+    (t.network_functions || []).forEach(nf => { nfCount[nf] = (nfCount[nf] || 0) + 1; });
   });
   const byNF = Object.entries(nfCount)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
+    .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([label, value]) => ({ label, value }));
 
-  return { byStatus, byOwnership, byProblemType, byNF };
+  // Avg resolution days (closed tickets only)
+  const closed = tickets.filter(t => t.date_closed && t.date_created);
+  let avgDays = null;
+  if (closed.length > 0) {
+    const total = closed.reduce((sum, t) => {
+      return sum + Math.max(0, Math.round((new Date(t.date_closed) - new Date(t.date_created)) / 86400000));
+    }, 0);
+    avgDays = Math.round(total / closed.length);
+  }
+
+  return { byStatus, byOwnership, byProblemType, byNF, totalTickets: tickets.length, avgDays };
 }
 
 function countBy(arr, key) {
@@ -303,21 +347,63 @@ function countBy(arr, key) {
   return Object.entries(counts).map(([label, value]) => ({ label, value }));
 }
 
-function parseQBRSections(content) {
-  const lines = content.split('\n');
-  const sections = [];
-  let current = null;
-  lines.forEach(line => {
-    if (line.startsWith('## ') || line.startsWith('# ')) {
-      if (current) sections.push(current);
-      current = { title: line.replace(/^#{1,2}\s/, ''), content: '' };
-    } else if (current) {
-      current.content += line + '\n';
-    }
-  });
-  if (current) sections.push(current);
-  if (sections.length === 0) sections.push({ title: 'QBR', content });
-  return sections;
+function buildQBRPrompt(tickets, config, date_from, date_to, user) {
+  const total       = tickets.length;
+  const closed      = tickets.filter(t => t.status === 'Closed').length;
+  const closedPct   = Math.round((closed / total) * 100);
+  const tier1Count  = tickets.filter(t => t.tier1_involvement).length;
+  const tier1Pct    = Math.round((tier1Count / total) * 100);
+
+  const closedTickets = tickets.filter(t => t.date_closed && t.date_created);
+  let avgDays = null;
+  if (closedTickets.length > 0) {
+    const sum = closedTickets.reduce((acc, t) =>
+      acc + Math.max(0, Math.round((new Date(t.date_closed) - new Date(t.date_created)) / 86400000)), 0);
+    avgDays = Math.round(sum / closedTickets.length);
+  }
+
+  const ticketsSummary = tickets.map(t =>
+    `[${t.task_id}] ${t.jira_id || ''} | Status: ${t.status} | Category: ${t.category || 'N/A'} | Problem: ${t.problem_type || 'N/A'}
+     Impact: ${t.impact || ''}
+     Value: ${t.value_added || ''}
+     RCA: ${t.rca || ''}`
+  ).join('\n\n');
+
+  return `You are building a QBR (Quarterly Business Review) slide for ${user.name} ${user.lastname} — IoT Platform TPM.
+
+PERIOD: ${date_from} to ${date_to}
+STATS: ${total} tickets total | ${closed} closed (${closedPct}%) | ${tier1Count} Tier 1-led (${tier1Pct}%) | Avg resolution: ${avgDays != null ? avgDays + ' days' : 'N/A'}
+
+QBR METHODOLOGY (apply strictly):
+NOTE: "YO" = César (the user), "VOS" = Claude. Read as directives only — do NOT reproduce dialogue in output.
+${config}
+
+TICKET DATA:
+${ticketsSummary}
+
+YOUR TASK:
+Generate content for ONE executive QBR slide. Return ONLY valid JSON — no markdown, no explanation, no code fences.
+
+JSON structure (exact):
+{
+  "slide_title": "short title, e.g. 'IoT 5GSA Platform — Q1 2026 QBR'",
+  "period_label": "e.g. 'Jan – Mar 2026'",
+  "kpi_1": { "value": "XX%", "label": "max 3 words" },
+  "kpi_2": { "value": "XX", "label": "max 3 words" },
+  "achievements": ["bullet 1 (max 15 words)", "bullet 2 (max 15 words)", "bullet 3 (max 15 words)"],
+  "challenges": ["challenge 1 (max 15 words)", "challenge 2 (max 15 words)"],
+  "next_steps": ["step 1 (max 12 words)", "step 2 (max 12 words)", "step 3 (max 12 words)"],
+  "call_to_action": "one sentence, max 20 words, specific and actionable"
+}
+
+RULES:
+- kpi_1 and kpi_2: the 2 most impactful numbers from the period (e.g. "${closedPct}% Closed", "${avgDays != null ? avgDays + 'd Avg Resolution' : tier1Pct + '% Tier 1-led'}")
+- achievements: top 3 accomplishments. Executive tone. Apply "So What" test. Each is one bullet, no sub-bullets.
+- challenges: 1-2 active blockers or risks, very concise
+- next_steps: 2-3 forward-looking actions, very concise
+- call_to_action: specific action required from management or partners
+- ALL text in English
+- Return ONLY the JSON object`;
 }
 
 function formatDate(d) {
@@ -325,37 +411,6 @@ function formatDate(d) {
   const [y, m, day] = d.split('-');
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[parseInt(m)-1]} ${day}, ${y}`;
-}
-
-function buildQBRPrompt(tickets, config, date_from, date_to, user, lang) {
-  const ticketsSummary = tickets.map(t =>
-    `- [${t.task_id}] ${t.jira_id || ''} | ${t.status} | ${t.led_by} | ${t.problem_type}
-     Impact: ${t.impact}
-     Value: ${t.value_added}
-     Strategic: ${t.strategic_relevance}`
-  ).join('\n');
-
-  const langInstruction = lang === 'en'
-    ? 'Write the entire QBR document in English. Director-Level tone.'
-    : 'Escribí todo el documento QBR en español. Tono ejecutivo, nivel Director.';
-
-  return `You are building a QBR (Quarterly Business Review) presentation for ${user.name} ${user.lastname}.
-
-PERIOD: ${date_from} to ${date_to}
-TOTAL TICKETS: ${tickets.length}
-
-QBR METHODOLOGY TO FOLLOW:
-NOTE: This methodology may be written as a dialogue where "YO" = the user (César) and "VOS" = Claude. Read it as directives and apply them as rules. Do NOT reproduce this dialogue format in the output — the QBR must always be clean, professional, executive-level content.
-${config}
-
-TICKET DATA:
-${ticketsSummary}
-
-Generate a complete QBR document in Markdown format, using the methodology above.
-Structure it with ## headers for each section.
-${langInstruction}
-Focus on impact, value, leadership, and strategic relevance — not task lists.
-Apply the "Absence Test" and "So What Test" to every item.`;
 }
 
 const DEFAULT_QBR_METHODOLOGY = `# QBR Methodology — César Villagra

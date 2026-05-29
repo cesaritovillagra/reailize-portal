@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { T, api, apiBlob } from '../../App.jsx';
 import { t } from '../../i18n.js';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -18,8 +18,61 @@ function ChartCard({ title, children }) {
   );
 }
 
+function KpiBox({ value, label, color }) {
+  return (
+    <div style={{ background: color, borderRadius: 12, padding: '1rem 1.5rem', textAlign: 'center', flex: 1 }}>
+      <div style={{ fontSize: 32, fontWeight: 800, color: '#fff', fontFamily: "'Space Grotesk', sans-serif", lineHeight: 1.1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontFamily: 'Inter, sans-serif' }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ContentBox({ icon, title, items, bg, border, titleColor }) {
+  return (
+    <div style={{ background: bg, border: `1.5px solid ${border}`, borderRadius: 12, padding: '1rem 1.2rem', flex: 1 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: titleColor, fontFamily: "'Space Grotesk', sans-serif", marginBottom: 8 }}>
+        {icon} {title}
+      </div>
+      {items.map((item, i) => (
+        <div key={i} style={{ fontSize: 13, color: T.INK, fontFamily: 'Inter, sans-serif',
+          padding: '3px 0', display: 'flex', gap: 6 }}>
+          <span style={{ color: border, flexShrink: 0 }}>•</span>
+          <span>{item}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DateField({ value, onChange }) {
+  const pickerRef = useRef(null);
+  const display = value ? value.split('-').reverse().join('/') : null;
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <div style={{
+        background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8,
+        padding: '0.65rem 2.2rem 0.65rem 1rem', color: display ? T.INK : T.MUTED,
+        fontSize: 14, fontFamily: 'Inter, sans-serif', minWidth: 130, whiteSpace: 'nowrap',
+      }}>
+        {display ?? 'dd/mm/aaaa'}
+      </div>
+      <input ref={pickerRef} type="date" value={value} onChange={e => onChange(e.target.value)}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+        tabIndex={-1} />
+      <button type="button" onClick={() => pickerRef.current?.showPicker()}
+        style={{ position: 'absolute', right: 8, background: 'none', border: 'none',
+          color: T.MUTED, fontSize: 14, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+        title="Elegir fecha">📅</button>
+    </div>
+  );
+}
+
 export default function QBRGenerator({ user, project, lang }) {
-  const [qbrTab, setQbrTab] = useState('generate'); // 'generate' | 'methodology'
+  const [qbrTab, setQbrTab] = useState('generate');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [generating, setGenerating] = useState(false);
@@ -50,7 +103,7 @@ export default function QBRGenerator({ user, project, lang }) {
       const blob = await apiBlob('/qbr/export-pptx', {
         method: 'POST',
         body: {
-          content: result.content,
+          slide_data: result.slide_data,
           charts: result.charts,
           date_from: dateFrom,
           date_to: dateTo,
@@ -64,7 +117,7 @@ export default function QBRGenerator({ user, project, lang }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(t(lang, 'error') + ': PowerPoint');
+      setError('Error al exportar PowerPoint');
     } finally {
       setExporting(false);
     }
@@ -109,9 +162,7 @@ export default function QBRGenerator({ user, project, lang }) {
       </div>
 
       {/* Metodología QBR tab */}
-      {qbrTab === 'methodology' && (
-        <QBRConfig user={user} project={project} lang={lang} />
-      )}
+      {qbrTab === 'methodology' && <QBRConfig user={user} project={project} lang={lang} />}
 
       {/* Generar QBR tab */}
       {qbrTab === 'generate' && <>
@@ -124,19 +175,17 @@ export default function QBRGenerator({ user, project, lang }) {
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
             <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 6,
-              fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>{t(lang, 'from')}</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8,
-                padding: '0.65rem 1rem', color: T.INK, fontSize: 14, outline: 'none',
-                fontFamily: 'Inter, sans-serif', colorScheme: 'dark' }} />
+              fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
+              {t(lang, 'from')}
+            </label>
+            <DateField value={dateFrom} onChange={setDateFrom} />
           </div>
           <div>
             <label style={{ display: 'block', color: T.MUTED, fontSize: 11, marginBottom: 6,
-              fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>{t(lang, 'to')}</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8,
-                padding: '0.65rem 1rem', color: T.INK, fontSize: 14, outline: 'none',
-                fontFamily: 'Inter, sans-serif', colorScheme: 'dark' }} />
+              fontFamily: "'Space Grotesk', sans-serif", letterSpacing: 0.5 }}>
+              {t(lang, 'to')}
+            </label>
+            <DateField value={dateTo} onChange={setDateTo} />
           </div>
           <button onClick={generate} disabled={generating || !dateFrom || !dateTo} className="btn-primary"
             style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.72rem 1.8rem',
@@ -166,30 +215,73 @@ export default function QBRGenerator({ user, project, lang }) {
         <div>
           {/* Action bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 18 }}>
-              {t(lang, 'qbrGenerated')}
-            </h2>
+            <div>
+              <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 18, marginBottom: 2 }}>
+                {result.slide_data.slide_title}
+              </h2>
+              <div style={{ color: T.MUTED, fontSize: 13 }}>{result.slide_data.period_label}</div>
+            </div>
             <button onClick={exportPPTX} disabled={exporting} className="btn-accent-outline"
               style={{ background: T.PANEL, border: `1px solid ${T.ACCENT}`, borderRadius: 8,
                 padding: '0.65rem 1.4rem', color: T.ACCENT,
                 fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14,
-                display: 'flex', alignItems: 'center', gap: 8,
-                opacity: exporting ? 0.7 : 1 }}>
+                display: 'flex', alignItems: 'center', gap: 8, opacity: exporting ? 0.7 : 1 }}>
               {exporting ? t(lang, 'exporting') : t(lang, 'exportPPTX')}
             </button>
           </div>
 
+          {/* KPI row */}
+          <div style={{ display: 'flex', gap: 16, marginBottom: '1.5rem' }}>
+            <KpiBox value={result.slide_data.kpi_1?.value} label={result.slide_data.kpi_1?.label} color={T.ACCENT} />
+            <KpiBox value={result.slide_data.kpi_2?.value} label={result.slide_data.kpi_2?.label} color='#00A878' />
+            <KpiBox value={String(result.charts.totalTickets)} label="Tickets Managed" color='#3B82F6' />
+            {result.charts.avgDays != null && (
+              <KpiBox value={`${result.charts.avgDays}d`} label="Avg. Resolution" color='#6366F1' />
+            )}
+          </div>
+
+          {/* Content boxes */}
+          <div style={{ display: 'flex', gap: 16, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <ContentBox
+              icon="✅" title="Key Achievements"
+              items={result.slide_data.achievements || []}
+              bg='#0f2a1e' border='#00A878' titleColor='#00d084' />
+            <ContentBox
+              icon="⚠️" title="Challenges"
+              items={result.slide_data.challenges || []}
+              bg='#2a1a0a' border='#E07000' titleColor='#ffb800' />
+            <ContentBox
+              icon="🎯" title="Next Steps"
+              items={result.slide_data.next_steps || []}
+              bg='#0a1a2a' border='#3B82F6' titleColor='#7AD0E2' />
+          </div>
+
+          {/* Call to Action */}
+          {result.slide_data.call_to_action && (
+            <div style={{ background: 'rgba(244,0,133,0.08)', border: `1.5px solid ${T.ACCENT}`,
+              borderRadius: 12, padding: '1rem 1.4rem', marginBottom: '1.5rem',
+              display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 20 }}>📢</span>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.ACCENT,
+                  fontFamily: "'Space Grotesk', sans-serif", marginBottom: 2 }}>CALL TO ACTION</div>
+                <div style={{ fontSize: 13, color: T.INK, fontFamily: 'Inter, sans-serif' }}>
+                  {result.slide_data.call_to_action}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Charts grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
             <ChartCard title={t(lang, 'ticketsByStatus')}>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie data={result.charts.byStatus} cx="50%" cy="50%" outerRadius={65}
-                    dataKey="value" nameKey="label" label={({ label, percent }) => `${label} ${(percent*100).toFixed(0)}%`}
+                    dataKey="value" nameKey="label"
+                    label={({ label, percent }) => `${label} ${(percent*100).toFixed(0)}%`}
                     labelLine={false}>
-                    {result.charts.byStatus.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
+                    {result.charts.byStatus.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8, color: T.INK }} />
                 </PieChart>
@@ -199,11 +291,8 @@ export default function QBRGenerator({ user, project, lang }) {
             <ChartCard title={t(lang, 'ownership')}>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
-                  <Pie data={result.charts.byOwnership} cx="50%" cy="50%" outerRadius={65}
-                    dataKey="value" nameKey="label">
-                    {result.charts.byOwnership.map((_, i) => (
-                      <Cell key={i} fill={i === 0 ? '#F40085' : '#7AD0E2'} />
-                    ))}
+                  <Pie data={result.charts.byOwnership} cx="50%" cy="50%" outerRadius={65} dataKey="value" nameKey="label">
+                    {result.charts.byOwnership.map((_, i) => <Cell key={i} fill={i === 0 ? '#F40085' : '#7AD0E2'} />)}
                   </Pie>
                   <Tooltip contentStyle={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8, color: T.INK }} />
                   <Legend wrapperStyle={{ color: T.INK, fontSize: 12 }} />
@@ -233,17 +322,9 @@ export default function QBRGenerator({ user, project, lang }) {
               </ResponsiveContainer>
             </ChartCard>
           </div>
-
-          {/* QBR Content */}
-          <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '2rem' }}>
-            <div style={{ color: T.INK, fontSize: 14, fontFamily: 'Inter, sans-serif', lineHeight: 1.9,
-              whiteSpace: 'pre-wrap' }}>
-              {result.content}
-            </div>
-          </div>
         </div>
       )}
-    </>}
+      </>}
     </div>
   );
 }
