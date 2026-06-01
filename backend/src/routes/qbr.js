@@ -148,93 +148,101 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     const slide = pptx.addSlide();
     slide.background = { color: WHITE };
 
-    // ── HEADER ───────────────────────────────────────────────────────────────
-    slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:13.33,h:0.48,fill:{color:PINK},line:{color:PINK,pt:0}});
-    slide.addText(sd.slide_title||`${project_name} — QBR`,{x:0.25,y:0.06,w:9.8,h:0.36,fontSize:14,bold:true,color:WHITE,fontFace:'Calibri',valign:'middle'});
-    slide.addText(sd.period_label||`${date_from} – ${date_to}`,{x:10.1,y:0.06,w:3.0,h:0.36,fontSize:10,color:WHITE,fontFace:'Calibri',align:'right',valign:'middle'});
+    // ── NO HEADER — slide starts directly with content ───────────────────────
+    const START_Y = 0.2; // content starts near top without header
 
     // ── VERTICAL DIVIDER ─────────────────────────────────────────────────────
-    slide.addShape(pptx.ShapeType.rect,{x:6.48,y:0.58,w:0.012,h:6.5,fill:{color:GRAY_LINE},line:{color:GRAY_LINE,pt:0}});
+    slide.addShape(pptx.ShapeType.rect,{x:6.48,y:START_Y,w:0.012,h:7.1,fill:{color:GRAY_LINE},line:{color:GRAY_LINE,pt:0}});
 
     // ── LEFT COLUMN ──────────────────────────────────────────────────────────
     const LX=0.18, LW=6.12;
+    const LCX = LX + LW/2; // horizontal center of left column
     const ws=sd.what_stands_out||{};
 
     // "What Stands Out" panel — includes badge + 2 pie charts
-    const WS_TEXT_H = 1.82; // badge/headline/sublabel/stat/footnote section
+    const WS_TEXT_H = 1.9;  // badge/headline/sublabel/stat/footnote section
     const PIE_H     = 1.55; // 2 pie charts side by side
     const WS_H      = WS_TEXT_H + 0.08 + PIE_H;
 
-    slide.addShape(pptx.ShapeType.roundRect,{x:LX,y:0.58,w:LW,h:WS_H,fill:{color:YELLOW_BG},line:{color:GRAY_LINE,pt:1},rectRadius:0.07});
+    slide.addShape(pptx.ShapeType.roundRect,{x:LX,y:START_Y,w:LW,h:WS_H,fill:{color:YELLOW_BG},line:{color:GRAY_LINE,pt:1},rectRadius:0.07});
 
     // Title
-    slide.addText('What Stands Out',{x:LX+0.12,y:0.62,w:LW-0.24,h:0.26,fontSize:11,bold:true,color:DARK,fontFace:'Calibri',align:'center'});
+    slide.addText('What Stands Out',{x:LX+0.12,y:START_Y+0.06,w:LW-0.24,h:0.26,fontSize:11,bold:true,color:DARK,fontFace:'Calibri',align:'center'});
 
-    // Badge
+    // Badge + emoji — centered as a unit within the panel
+    const BADGE_W=1.7, EMOJI_W=0.55, BADGE_EMOJI_GAP=0.12;
+    const BADGE_TOTAL=BADGE_W+BADGE_EMOJI_GAP+EMOJI_W;
+    const BADGE_X=LCX-BADGE_TOTAL/2;
+    const BADGE_Y=START_Y+0.38;
     const badgeColor=ws.badge_color==='green'?GREEN:ws.badge_color==='cyan'?CYAN:PINK;
-    slide.addShape(pptx.ShapeType.roundRect,{x:LX+1.2,y:0.93,w:1.7,h:0.5,fill:{color:badgeColor},line:{color:badgeColor,pt:0},rectRadius:0.06});
-    slide.addText(ws.badge_value||(charts?.totalTickets?`${charts.totalTickets}`:'–'),{x:LX+1.2,y:0.93,w:1.7,h:0.5,fontSize:20,bold:true,color:WHITE,fontFace:'Calibri',align:'center',valign:'middle'});
-    if(ws.badge_emoji) slide.addText(ws.badge_emoji,{x:LX+3.05,y:0.93,w:0.55,h:0.5,fontSize:20,fontFace:'Segoe UI Emoji',align:'left',valign:'middle'});
+    slide.addShape(pptx.ShapeType.roundRect,{x:BADGE_X,y:BADGE_Y,w:BADGE_W,h:0.52,fill:{color:badgeColor},line:{color:badgeColor,pt:0},rectRadius:0.06});
+    slide.addText(ws.badge_value||(charts?.totalTickets?`${charts.totalTickets}`:'–'),{x:BADGE_X,y:BADGE_Y,w:BADGE_W,h:0.52,fontSize:22,bold:true,color:WHITE,fontFace:'Calibri',align:'center',valign:'middle'});
+    if(ws.badge_emoji) slide.addText(ws.badge_emoji,{x:BADGE_X+BADGE_W+BADGE_EMOJI_GAP,y:BADGE_Y,w:EMOJI_W,h:0.52,fontSize:22,fontFace:'Segoe UI Emoji',align:'left',valign:'middle'});
 
     // Headline
-    if(ws.headline) slide.addText(ws.headline,{x:LX+0.15,y:1.5,w:LW-0.3,h:0.26,fontSize:9,color:DARK,fontFace:'Calibri',align:'center',wrap:true});
+    if(ws.headline) slide.addText(ws.headline,{x:LX+0.15,y:START_Y+0.98,w:LW-0.3,h:0.26,fontSize:9,color:DARK,fontFace:'Calibri',align:'center',wrap:true});
 
-    // Sub-label
+    // Sub-label (centered)
     if(ws.sub_label){
-      slide.addShape(pptx.ShapeType.roundRect,{x:LX+1.7,y:1.8,w:2.5,h:0.24,fill:{color:GREEN},line:{color:GREEN,pt:0},rectRadius:0.04});
-      slide.addText(ws.sub_label,{x:LX+1.7,y:1.8,w:2.5,h:0.24,fontSize:8.5,bold:true,color:WHITE,fontFace:'Calibri',align:'center',valign:'middle'});
+      slide.addShape(pptx.ShapeType.roundRect,{x:LCX-1.25,y:START_Y+1.3,w:2.5,h:0.24,fill:{color:GREEN},line:{color:GREEN,pt:0},rectRadius:0.04});
+      slide.addText(ws.sub_label,{x:LCX-1.25,y:START_Y+1.3,w:2.5,h:0.24,fontSize:8.5,bold:true,color:WHITE,fontFace:'Calibri',align:'center',valign:'middle'});
     }
 
-    // Secondary stat
-    if(ws.secondary_stat) slide.addText(ws.secondary_stat,{x:LX+0.15,y:2.08,w:LW-0.3,h:0.2,fontSize:8.5,color:PINK,fontFace:'Calibri',align:'center',bold:true,italic:true});
+    // Secondary stat — with enough gap below sub-label
+    if(ws.secondary_stat) slide.addText(ws.secondary_stat,{x:LX+0.15,y:START_Y+1.62,w:LW-0.3,h:0.22,fontSize:8,color:PINK,fontFace:'Calibri',align:'center',bold:true,italic:true,wrap:true});
 
     // Footnote
-    if(ws.footnote) slide.addText(ws.footnote,{x:LX+0.15,y:2.32,w:LW-0.3,h:0.16,fontSize:7.5,color:MUTED,fontFace:'Calibri',align:'center',italic:true});
+    if(ws.footnote) slide.addText(ws.footnote,{x:LX+0.15,y:START_Y+1.87,w:LW-0.3,h:0.16,fontSize:7.5,color:MUTED,fontFace:'Calibri',align:'center',italic:true});
 
     // ── 2 PIE CHARTS inside yellow panel ─────────────────────────────────────
-    const PIE_Y = 0.58 + WS_TEXT_H + 0.08;
+    const PIE_Y = START_Y + WS_TEXT_H + 0.06;
     const pieW  = (LW - 0.1) / 2;
 
-    // Pie 1: TPM-led vs Tier 1-led
+    // Pre-compute single-line labels: "Label: N (XX%)"
     const ownership=(charts?.byOwnership||[]).filter(d=>d.value>0);
     if(ownership.length>0){
+      const ownerTotal=ownership.reduce((s,d)=>s+d.value,0);
       slide.addChart(pptx.ChartType.pie,[{
         name:'Ownership',
-        labels:ownership.map(d=>d.label),
+        labels:ownership.map(d=>{
+          const lbl=d.label==='TPM-led (César)'?'TPM-led':d.label;
+          return `${lbl}: ${d.value} (${Math.round(d.value/ownerTotal*100)}%)`;
+        }),
         values:ownership.map(d=>d.value),
       }],{
         x:LX, y:PIE_Y, w:pieW, h:PIE_H,
         chartColors:[PINK,'7AD0E2'],
         showLegend:true, legendPos:'b', legendFontSize:7,
-        showLabel:true, showValue:true, showPercent:true,
+        showLabel:true, showValue:false, showPercent:false,
         dataLabelPosition:'outEnd',
-        dataLabelFontSize:8, dataLabelColor:DARK,
+        dataLabelFontSize:8, dataLabelColor:DARK, dataLabelFontBold:false,
         showTitle:true, title:'TPM-led vs Tier 1-led', titleFontSize:8, titleColor:DARK, titleBold:true,
       });
     }
 
-    // Pie 2: Tickets by Status
+    // Pie 2: Tickets by Status — single-line labels
     const byStatus=(charts?.byStatus||[]).filter(d=>d.value>0);
     if(byStatus.length>0){
+      const statusTotal=byStatus.reduce((s,d)=>s+d.value,0);
       slide.addChart(pptx.ChartType.pie,[{
         name:'Status',
-        labels:byStatus.map(d=>d.label),
+        labels:byStatus.map(d=>`${d.label}: ${d.value} (${Math.round(d.value/statusTotal*100)}%)`),
         values:byStatus.map(d=>d.value),
       }],{
         x:LX+pieW+0.1, y:PIE_Y, w:pieW, h:PIE_H,
         chartColors:[PINK,CYAN,GREEN,ORANGE,PURPLE,'14B8A6'],
         showLegend:true, legendPos:'b', legendFontSize:7,
-        showLabel:true, showValue:true, showPercent:true,
+        showLabel:true, showValue:false, showPercent:false,
         dataLabelPosition:'outEnd',
-        dataLabelFontSize:8, dataLabelColor:DARK,
+        dataLabelFontSize:8, dataLabelColor:DARK, dataLabelFontBold:false,
         showTitle:true, title:'Tickets by Status', titleFontSize:8, titleColor:DARK, titleBold:true,
       });
     }
 
     // ── NF BAR CHART (vertical, wider bars, data labels) ─────────────────────
     const nfData=(charts?.byNF||[]).filter(d=>d.label&&d.label!=='Unknown'&&d.label!=='null'&&d.value>0).sort((a,b)=>b.value-a.value).slice(0,8);
-    const CHART_Y=0.58+WS_H+0.1;
-    const CHART_H=6.1-CHART_Y;
+    const CHART_Y=START_Y+WS_H+0.1;
+    const CHART_H=6.55-CHART_Y;
 
     if(nfData.length>0 && CHART_H>0.5){
       slide.addChart(pptx.ChartType.bar,[{
@@ -248,7 +256,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         chartColors:nfData.map((_,i)=>BAR_COLORS[i%BAR_COLORS.length]),
         showLegend:false,
         showValue:true,
-        dataLabelPosition:'outEnd', dataLabelFontSize:10, dataLabelColor:DARK,
+        dataLabelPosition:'outEnd', dataLabelFontSize:8, dataLabelColor:DARK,
         catAxisLabelFontSize:8, catAxisLabelColor:DARK,
         valAxisLabelFontSize:8, valAxisMinVal:0,
         plotAreaBorderColor:'F0F0F0', plotAreaBorderPt:0.3,
@@ -258,34 +266,37 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     }
 
     // Chart insight
-    if(sd.chart_insight) slide.addText(sd.chart_insight,{x:LX,y:6.14,w:LW,h:0.34,fontSize:8,color:DARK,fontFace:'Calibri',align:'center',italic:true,wrap:true});
+    if(sd.chart_insight) slide.addText(sd.chart_insight,{x:LX,y:6.6,w:LW,h:0.34,fontSize:8,color:DARK,fontFace:'Calibri',align:'center',italic:true,wrap:true});
 
     // ── RIGHT COLUMN ─────────────────────────────────────────────────────────
     const RX=6.62, COL_W=6.53;
     // Center helper: centers a box of width w within the right column
     const cx = (w) => RX + (COL_W - w) / 2;
-    let curY=0.58;
+    let curY=START_Y;
 
-    // KPI boxes — content-sized widths, detail text at 9pt
+    // KPI boxes — centered as a unit, content-sized widths
     const kpi1=sd.kpi_1||{}, kpi2=sd.kpi_2||{};
     const KPI1_W=2.9;
-    // KPI2 width: dynamic based on longest detail item (~0.07"/char at 9pt + padding)
     const kpi2MaxLen=Math.max(...(kpi2.detail||['OEMs']).map(d=>d.length),(kpi2.label||'').length);
     const KPI2_W=Math.min(Math.max(kpi2MaxLen*0.072+0.5, 2.2), 3.2);
     const KPI1_H=0.55+Math.min((kpi1.detail||[]).length,5)*0.2;
     const KPI2_H=0.55+Math.min((kpi2.detail||[]).length,5)*0.2;
     const KPI_H=Math.max(KPI1_H,KPI2_H);
 
-    // KPI 1 (PINK) — left-anchored
-    slide.addShape(pptx.ShapeType.roundRect,{x:RX,y:curY,w:KPI1_W,h:KPI_H,fill:{color:PINK},line:{color:PINK,pt:0},rectRadius:0.07});
+    // Center both KPI boxes as a unit
+    const TOTAL_KPI_W=KPI1_W+0.12+KPI2_W;
+    const KPI_START_X=cx(TOTAL_KPI_W);
+
+    // KPI 1 (PINK)
+    slide.addShape(pptx.ShapeType.roundRect,{x:KPI_START_X,y:curY,w:KPI1_W,h:KPI_H,fill:{color:PINK},line:{color:PINK,pt:0},rectRadius:0.07});
     const k1=[]; if(kpi1.emoji)k1.push({text:kpi1.emoji+' ',options:{fontSize:14,fontFace:'Segoe UI Emoji',color:WHITE}});
     k1.push({text:(kpi1.value||'–')+'\n',options:{fontSize:20,bold:true,color:WHITE,fontFace:'Calibri'}});
     k1.push({text:(kpi1.label||'')+'\n',options:{fontSize:9,color:WHITE,fontFace:'Calibri'}});
     (kpi1.detail||[]).slice(0,5).forEach(d=>k1.push({text:'• '+d+'\n',options:{fontSize:9,color:WHITE,fontFace:'Calibri'}}));
-    slide.addText(k1,{x:RX+0.1,y:curY+0.08,w:KPI1_W-0.2,h:KPI_H-0.1,fontFace:'Calibri',align:'center',valign:'top',wrap:true});
+    slide.addText(k1,{x:KPI_START_X+0.1,y:curY+0.08,w:KPI1_W-0.2,h:KPI_H-0.1,fontFace:'Calibri',align:'center',valign:'top',wrap:true});
 
-    // KPI 2 (GREEN) — next to KPI1, dynamic width
-    const KPI2_X=RX+KPI1_W+0.12;
+    // KPI 2 (GREEN)
+    const KPI2_X=KPI_START_X+KPI1_W+0.12;
     slide.addShape(pptx.ShapeType.roundRect,{x:KPI2_X,y:curY,w:KPI2_W,h:KPI_H,fill:{color:GREEN},line:{color:GREEN,pt:0},rectRadius:0.07});
     const k2=[]; if(kpi2.emoji)k2.push({text:kpi2.emoji+' ',options:{fontSize:14,fontFace:'Segoe UI Emoji',color:WHITE}});
     k2.push({text:(kpi2.value||'–')+'\n',options:{fontSize:20,bold:true,color:WHITE,fontFace:'Calibri'}});
