@@ -206,9 +206,10 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         x:LX, y:PIE_Y, w:pieW, h:PIE_H,
         chartColors:[PINK,'7AD0E2'],
         showLegend:true, legendPos:'b', legendFontSize:7,
-        showValue:true, showPercent:true,
-        dataLabelFontSize:8, dataLabelColor:WHITE,
-        showTitle:true, title:'TPM-led vs Tier 1-led', titleFontSize:8, titleColor:MUTED,
+        showLabel:true, showValue:true, showPercent:true,
+        dataLabelPosition:'outEnd',
+        dataLabelFontSize:8, dataLabelColor:DARK,
+        showTitle:true, title:'TPM-led vs Tier 1-led', titleFontSize:8, titleColor:DARK, titleBold:true,
       });
     }
 
@@ -223,9 +224,10 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         x:LX+pieW+0.1, y:PIE_Y, w:pieW, h:PIE_H,
         chartColors:[PINK,CYAN,GREEN,ORANGE,PURPLE,'14B8A6'],
         showLegend:true, legendPos:'b', legendFontSize:7,
-        showValue:true, showPercent:true,
-        dataLabelFontSize:8, dataLabelColor:WHITE,
-        showTitle:true, title:'Tickets by Status', titleFontSize:8, titleColor:MUTED,
+        showLabel:true, showValue:true, showPercent:true,
+        dataLabelPosition:'outEnd',
+        dataLabelFontSize:8, dataLabelColor:DARK,
+        showTitle:true, title:'Tickets by Status', titleFontSize:8, titleColor:DARK, titleBold:true,
       });
     }
 
@@ -245,6 +247,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         barGapWidthPct:50,
         chartColors:nfData.map((_,i)=>BAR_COLORS[i%BAR_COLORS.length]),
         showLegend:false,
+        showValue:true,
         dataLabelPosition:'outEnd', dataLabelFontSize:10, dataLabelColor:DARK,
         catAxisLabelFontSize:8, catAxisLabelColor:DARK,
         valAxisLabelFontSize:8, valAxisMinVal:0,
@@ -258,17 +261,22 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     if(sd.chart_insight) slide.addText(sd.chart_insight,{x:LX,y:6.14,w:LW,h:0.34,fontSize:8,color:DARK,fontFace:'Calibri',align:'center',italic:true,wrap:true});
 
     // ── RIGHT COLUMN ─────────────────────────────────────────────────────────
-    const RX=6.62;
+    const RX=6.62, COL_W=6.53;
+    // Center helper: centers a box of width w within the right column
+    const cx = (w) => RX + (COL_W - w) / 2;
     let curY=0.58;
 
     // KPI boxes — content-sized widths, detail text at 9pt
     const kpi1=sd.kpi_1||{}, kpi2=sd.kpi_2||{};
-    const KPI1_W=2.9, KPI2_W=3.1;
+    const KPI1_W=2.9;
+    // KPI2 width: dynamic based on longest detail item (~0.07"/char at 9pt + padding)
+    const kpi2MaxLen=Math.max(...(kpi2.detail||['OEMs']).map(d=>d.length),(kpi2.label||'').length);
+    const KPI2_W=Math.min(Math.max(kpi2MaxLen*0.072+0.5, 2.2), 3.2);
     const KPI1_H=0.55+Math.min((kpi1.detail||[]).length,5)*0.2;
     const KPI2_H=0.55+Math.min((kpi2.detail||[]).length,5)*0.2;
     const KPI_H=Math.max(KPI1_H,KPI2_H);
 
-    // KPI 1 (PINK)
+    // KPI 1 (PINK) — left-anchored
     slide.addShape(pptx.ShapeType.roundRect,{x:RX,y:curY,w:KPI1_W,h:KPI_H,fill:{color:PINK},line:{color:PINK,pt:0},rectRadius:0.07});
     const k1=[]; if(kpi1.emoji)k1.push({text:kpi1.emoji+' ',options:{fontSize:14,fontFace:'Segoe UI Emoji',color:WHITE}});
     k1.push({text:(kpi1.value||'–')+'\n',options:{fontSize:20,bold:true,color:WHITE,fontFace:'Calibri'}});
@@ -276,65 +284,70 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     (kpi1.detail||[]).slice(0,5).forEach(d=>k1.push({text:'• '+d+'\n',options:{fontSize:9,color:WHITE,fontFace:'Calibri'}}));
     slide.addText(k1,{x:RX+0.1,y:curY+0.08,w:KPI1_W-0.2,h:KPI_H-0.1,fontFace:'Calibri',align:'center',valign:'top',wrap:true});
 
-    // KPI 2 (GREEN)
-    slide.addShape(pptx.ShapeType.roundRect,{x:RX+KPI1_W+0.12,y:curY,w:KPI2_W,h:KPI_H,fill:{color:GREEN},line:{color:GREEN,pt:0},rectRadius:0.07});
+    // KPI 2 (GREEN) — next to KPI1, dynamic width
+    const KPI2_X=RX+KPI1_W+0.12;
+    slide.addShape(pptx.ShapeType.roundRect,{x:KPI2_X,y:curY,w:KPI2_W,h:KPI_H,fill:{color:GREEN},line:{color:GREEN,pt:0},rectRadius:0.07});
     const k2=[]; if(kpi2.emoji)k2.push({text:kpi2.emoji+' ',options:{fontSize:14,fontFace:'Segoe UI Emoji',color:WHITE}});
     k2.push({text:(kpi2.value||'–')+'\n',options:{fontSize:20,bold:true,color:WHITE,fontFace:'Calibri'}});
     k2.push({text:(kpi2.label||'')+'\n',options:{fontSize:9,color:WHITE,fontFace:'Calibri'}});
     (kpi2.detail||[]).slice(0,5).forEach(d=>k2.push({text:'• '+d+'\n',options:{fontSize:9,color:WHITE,fontFace:'Calibri'}}));
-    slide.addText(k2,{x:RX+KPI1_W+0.22,y:curY+0.08,w:KPI2_W-0.2,h:KPI_H-0.1,fontFace:'Calibri',align:'center',valign:'top',wrap:true});
+    slide.addText(k2,{x:KPI2_X+0.1,y:curY+0.08,w:KPI2_W-0.2,h:KPI_H-0.1,fontFace:'Calibri',align:'center',valign:'top',wrap:true});
     curY+=KPI_H+0.12;
 
-    // Asymmetric box widths — create visual breathing room
-    const W_ACH=6.2, W_CHAL=5.3, W_NS=5.8, W_CTA=6.4;
+    // Asymmetric box widths — centered horizontally in right column
+    const W_ACH=6.0, W_CHAL=5.2, W_NS=5.6, W_CTA=6.3;
 
-    // Achievements (green)
+    // Achievements (green) — centered
     const achievements=norm(sd.achievements);
     const ACH_H=boxH(achievements);
-    slide.addShape(pptx.ShapeType.roundRect,{x:RX,y:curY,w:W_ACH,h:ACH_H,fill:{color:GREEN_BG},line:{color:GREEN,pt:1.5},rectRadius:0.07});
+    const ACH_X=cx(W_ACH);
+    slide.addShape(pptx.ShapeType.roundRect,{x:ACH_X,y:curY,w:W_ACH,h:ACH_H,fill:{color:GREEN_BG},line:{color:GREEN,pt:1.5},rectRadius:0.07});
     slide.addText([
-      {text:'✅  Key Achievements\n',options:{fontSize:10,bold:true,color:GREEN,fontFace:'Calibri'}},
+      {text:'✅  Key Achievements\n',options:{fontSize:13,bold:true,color:GREEN,fontFace:'Calibri'}},
       ...achievements.map(a=>[
-        {text:(a.icon||'•')+'  ',options:{fontSize:13,fontFace:'Segoe UI Emoji',color:DARK}},
+        {text:(a.icon||'•')+'  ',options:{fontSize:11,fontFace:'Segoe UI Emoji',color:DARK}},
         {text:(a.text||'')+'\n',options:{fontSize:9,color:DARK,fontFace:'Calibri'}},
       ]).flat(),
-    ],{x:RX+0.12,y:curY+0.08,w:W_ACH-0.24,h:ACH_H-0.1,fontFace:'Calibri',valign:'top',wrap:true});
+    ],{x:ACH_X+0.12,y:curY+0.08,w:W_ACH-0.24,h:ACH_H-0.1,fontFace:'Calibri',valign:'top',wrap:true});
     curY+=ACH_H+0.1;
 
-    // Challenges (orange)
+    // Challenges (orange) — centered
     const challenges=norm(sd.challenges);
     const CHAL_H=boxH(challenges);
-    slide.addShape(pptx.ShapeType.roundRect,{x:RX,y:curY,w:W_CHAL,h:CHAL_H,fill:{color:ORANGE_BG},line:{color:ORANGE,pt:1.5},rectRadius:0.07});
+    const CHAL_X=cx(W_CHAL);
+    slide.addShape(pptx.ShapeType.roundRect,{x:CHAL_X,y:curY,w:W_CHAL,h:CHAL_H,fill:{color:ORANGE_BG},line:{color:ORANGE,pt:1.5},rectRadius:0.07});
     slide.addText([
-      {text:'⚠️  Challenges\n',options:{fontSize:10,bold:true,color:ORANGE,fontFace:'Segoe UI Emoji'}},
+      {text:'⚠️  Challenges\n',options:{fontSize:13,bold:true,color:ORANGE,fontFace:'Segoe UI Emoji'}},
       ...challenges.map(c=>[
-        {text:(c.icon||'•')+'  ',options:{fontSize:13,fontFace:'Segoe UI Emoji',color:DARK}},
+        {text:(c.icon||'•')+'  ',options:{fontSize:11,fontFace:'Segoe UI Emoji',color:DARK}},
         {text:(c.text||'')+'\n',options:{fontSize:9,color:DARK,fontFace:'Calibri'}},
       ]).flat(),
-    ],{x:RX+0.12,y:curY+0.08,w:W_CHAL-0.24,h:CHAL_H-0.1,fontFace:'Calibri',valign:'top',wrap:true});
+    ],{x:CHAL_X+0.12,y:curY+0.08,w:W_CHAL-0.24,h:CHAL_H-0.1,fontFace:'Calibri',valign:'top',wrap:true});
     curY+=CHAL_H+0.1;
 
-    // Next Steps (cyan)
+    // Next Steps (cyan) — centered
     const nextSteps=norm(sd.next_steps);
     const NS_H=boxH(nextSteps);
-    slide.addShape(pptx.ShapeType.roundRect,{x:RX,y:curY,w:W_NS,h:NS_H,fill:{color:CYAN_BG},line:{color:CYAN,pt:1.5},rectRadius:0.07});
+    const NS_X=cx(W_NS);
+    slide.addShape(pptx.ShapeType.roundRect,{x:NS_X,y:curY,w:W_NS,h:NS_H,fill:{color:CYAN_BG},line:{color:CYAN,pt:1.5},rectRadius:0.07});
     slide.addText([
-      {text:'🎯  Next Steps & Targets\n',options:{fontSize:10,bold:true,color:CYAN,fontFace:'Segoe UI Emoji'}},
+      {text:'🎯  Next Steps & Targets\n',options:{fontSize:13,bold:true,color:CYAN,fontFace:'Segoe UI Emoji'}},
       ...nextSteps.map(n=>[
-        {text:(n.icon||'•')+'  ',options:{fontSize:13,fontFace:'Segoe UI Emoji',color:DARK}},
+        {text:(n.icon||'•')+'  ',options:{fontSize:11,fontFace:'Segoe UI Emoji',color:DARK}},
         {text:(n.text||'')+'\n',options:{fontSize:9,color:DARK,fontFace:'Calibri'}},
       ]).flat(),
-    ],{x:RX+0.12,y:curY+0.08,w:W_NS-0.24,h:NS_H-0.1,fontFace:'Calibri',valign:'top',wrap:true});
+    ],{x:NS_X+0.12,y:curY+0.08,w:W_NS-0.24,h:NS_H-0.1,fontFace:'Calibri',valign:'top',wrap:true});
     curY+=NS_H+0.1;
 
-    // Call to Action (pink light, PINK border)
+    // Call to Action (pink light, PINK border) — centered
     const CTA_H=0.44;
-    slide.addShape(pptx.ShapeType.roundRect,{x:RX,y:curY,w:W_CTA,h:CTA_H,fill:{color:PINK_LIGHT},line:{color:PINK,pt:2},rectRadius:0.07});
+    const CTA_X=cx(W_CTA);
+    slide.addShape(pptx.ShapeType.roundRect,{x:CTA_X,y:curY,w:W_CTA,h:CTA_H,fill:{color:PINK_LIGHT},line:{color:PINK,pt:2},rectRadius:0.07});
     slide.addText([
-      {text:'📢  ',options:{fontSize:10,fontFace:'Segoe UI Emoji'}},
+      {text:'📢  ',options:{fontSize:12,fontFace:'Segoe UI Emoji'}},
       {text:'Call to Action: ',options:{fontSize:10,bold:true,color:PINK,fontFace:'Calibri'}},
       {text:sd.call_to_action||'',options:{fontSize:9.5,color:DARK,fontFace:'Calibri'}},
-    ],{x:RX+0.12,y:curY+0.06,w:W_CTA-0.24,h:CTA_H-0.1,fontFace:'Calibri',valign:'middle',wrap:true});
+    ],{x:CTA_X+0.12,y:curY+0.06,w:W_CTA-0.24,h:CTA_H-0.1,fontFace:'Calibri',valign:'middle',wrap:true});
 
     const buffer=await pptx.write({outputType:'nodebuffer'});
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.presentationml.presentation');
@@ -474,12 +487,14 @@ JSON structure (exact):
 RULES:
 - kpi_1: most impactful % metric (e.g. ${closedPct}% closed rate). detail[] = up to 4 supporting facts.
 - kpi_2: most impactful count metric (e.g. OEMs, tickets, NFs). detail[] = list the actual names/items when applicable.
-- what_stands_out: the single most impressive insight from the period. badge_value = the key number. headline = context sentence. sub_label = period snapshot label. secondary_stat = supporting data point in italic. footnote = caveat if needed.
-- chart_insight: one-sentence "so what" for the Network Functions chart.
-- achievements: top 3. Icon must be a relevant emoji. Text max 15 words, executive tone, "So What" test applied.
-- challenges: 1-2 active blockers/risks. Concise. Relevant emoji icon.
-- next_steps: 2-3 forward-looking actions. Concise. Relevant emoji icon.
-- call_to_action: specific ask to management/partners.
+- OEM DEFINITION: OEM = device/equipment manufacturer (Honda, Rivian, Ford, Subaru, Samsung, Ericsson, Nokia, etc.). Polaris is a satellite access system — NOT an OEM. Never include Polaris in the OEM list or count. Exclude it silently.
+- what_stands_out.secondary_stat: MUST be a concrete, verifiable fact extracted directly from the ticket data (impact, value_added, or rca fields). Mention specific NFs, ticket counts, or confirmed root causes. NEVER use generic phrases like "cross-domain escalations prevented through structured methodology". Good example: "Root cause confirmed in 8 of 9 closed tickets — ISBUS credential expiry and PCF↔CHF path gaps as primary drivers."
+- chart_insight: one-sentence "so what" for the Network Functions chart. Be specific about which NFs dominated and why it matters.
+- achievements/challenges/next_steps icons: EVERY icon must be unique and contextually relevant. The icon of each item must be DIFFERENT from the title icon of its section (✅ for achievements, ⚠️ for challenges, 🎯 for next steps). Items within the same section must also have different icons from each other.
+- achievements: top 3. Executive tone, "So What" test applied. Max 15 words each.
+- challenges: 1-2 active blockers/risks. Concise. Max 15 words each.
+- next_steps: 2-3 forward-looking actions. Concise. Max 12 words each.
+- call_to_action: specific ask to management/partners. Max 20 words.
 - ALL text in English.
 - Return ONLY the JSON object, no markdown, no code fences.`;
 }
