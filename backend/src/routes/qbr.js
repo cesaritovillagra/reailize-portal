@@ -76,7 +76,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
     const [ticketsRes, configRes] = await Promise.all([
       pool.query(
         `SELECT * FROM tickets WHERE user_id=$1 AND project_id=$2
-         AND date_created >= $3 AND date_created <= $4 AND deleted=false
+         AND date_created >= $3 AND date_created <= ($4::date + interval '1 day') AND deleted=false
          ORDER BY date_created ASC`,
         [req.user.id, project_id, date_from, date_to]
       ),
