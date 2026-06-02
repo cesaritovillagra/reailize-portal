@@ -207,15 +207,22 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     const PIE_Y = START_Y + WS_TEXT_H + 0.04;
     const pieW  = (LW - 0.1) / 2;
 
-    // Pre-compute single-line labels: "Label: N (XX%)"
+    // Pie label helper: 2-line for large slices (>=8%), 1-line for small
+    const pieLabel = (name, value, total) => {
+      const pct = Math.round(value / total * 100);
+      return pct >= 8
+        ? `${name}:\n${value} (${pct}%)`   // 2 lines for large slices
+        : `${name}: ${value} (${pct}%)`;    // 1 line for small slices
+    };
+
     const ownership=(charts?.byOwnership||[]).filter(d=>d.value>0);
     if(ownership.length>0){
       const ownerTotal=ownership.reduce((s,d)=>s+d.value,0);
       slide.addChart(pptx.ChartType.pie,[{
         name:'Ownership',
         labels:ownership.map(d=>{
-          const lbl=d.label==='TPM-led (César)'?'TPM-led':d.label;
-          return `${lbl}: ${d.value} (${Math.round(d.value/ownerTotal*100)}%)`;
+          const lbl=d.label==='TPM-led (César)'?'TPM Led':'Tier 1 Led';
+          return pieLabel(lbl, d.value, ownerTotal);
         }),
         values:ownership.map(d=>d.value),
       }],{
@@ -224,18 +231,18 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         showLegend:true, legendPos:'b', legendFontSize:7,
         showLabel:true, showValue:false, showPercent:false,
         dataLabelPosition:'bestFit',
-        dataLabelFontSize:7, dataLabelColor:DARK, dataLabelFontBold:false,
+        dataLabelFontSize:7, dataLabelColor:DARK, dataLabelFontBold:true,
         showTitle:true, title:'TPM-led vs Tier 1-led', titleFontSize:8, titleColor:DARK, titleBold:true,
       });
     }
 
-    // Pie 2: Tickets by Status — single-line labels
+    // Pie 2: Tickets by Status
     const byStatus=(charts?.byStatus||[]).filter(d=>d.value>0);
     if(byStatus.length>0){
       const statusTotal=byStatus.reduce((s,d)=>s+d.value,0);
       slide.addChart(pptx.ChartType.pie,[{
         name:'Status',
-        labels:byStatus.map(d=>`${d.label}: ${d.value} (${Math.round(d.value/statusTotal*100)}%)`),
+        labels:byStatus.map(d=>pieLabel(d.label, d.value, statusTotal)),
         values:byStatus.map(d=>d.value),
       }],{
         x:LX+pieW+0.1, y:PIE_Y, w:pieW, h:PIE_H,
@@ -243,7 +250,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         showLegend:true, legendPos:'b', legendFontSize:7,
         showLabel:true, showValue:false, showPercent:false,
         dataLabelPosition:'bestFit',
-        dataLabelFontSize:7, dataLabelColor:DARK, dataLabelFontBold:false,
+        dataLabelFontSize:7, dataLabelColor:DARK, dataLabelFontBold:true,
         showTitle:true, title:'Tickets by Status', titleFontSize:8, titleColor:DARK, titleBold:true,
       });
     }
@@ -270,7 +277,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         valAxisLabelFontSize:8, valAxisMinVal:0,
         plotAreaBorderColor:'F0F0F0', plotAreaBorderPt:0.3,
         valGridLine:{color:'EEEEEE',pt:0.3,style:'solid'},
-        showTitle:true, title:'Issues by Network Function', titleFontSize:9, titleColor:MUTED,
+        showTitle:true, title:'Issues by Network Function', titleFontSize:9, titleColor:DARK, titleBold:true,
       });
     }
 
