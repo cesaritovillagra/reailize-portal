@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { T, api, apiBlob } from '../../App.jsx';
 import { t } from '../../i18n.js';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -62,6 +62,136 @@ function ContentBox({ icon, title, items, bg, border, titleColor }) {
   );
 }
 
+// ── Speech Guide Markdown Renderer (same style as QBRConfig) ─────────────────
+function SpeechGuideMarkdown({ content }) {
+  if (!content?.trim()) return null;
+  const lines = content.split('\n');
+  const els = []; let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) { els.push(<div key={i} style={{ height: 8 }} />); i++; continue; }
+    if (/^---+$/.test(l.trim())) { els.push(<hr key={i} style={{ border: 'none', borderTop: `1px solid ${T.BORDER}`, margin: '1rem 0' }} />); i++; continue; }
+    const h2 = l.match(/^## (.+)/); const h3 = l.match(/^### (.+)/); const h1 = l.match(/^# (.+)/);
+    if (h1) { els.push(<h1 key={i} style={{ fontSize: 22, fontWeight: 700, color: T.INK, fontFamily: "'Space Grotesk',sans-serif", margin: '1.4rem 0 0.5rem' }}>{h1[1]}</h1>); i++; continue; }
+    if (h2) { els.push(<h2 key={i} style={{ fontSize: 17, fontWeight: 700, color: T.INK, fontFamily: "'Space Grotesk',sans-serif", margin: '1.2rem 0 0.4rem', borderBottom: `1px solid ${T.BORDER}`, paddingBottom: 6 }}>{h2[1]}</h2>); i++; continue; }
+    if (h3) { els.push(<h3 key={i} style={{ fontSize: 14, fontWeight: 700, color: T.ACCENT, fontFamily: "'Space Grotesk',sans-serif", margin: '1rem 0 0.3rem' }}>{h3[1]}</h3>); i++; continue; }
+    if (/^[-*] /.test(l)) {
+      const items = [];
+      while (i < lines.length && /^[-*] /.test(lines[i])) { items.push(<li key={i} style={{ marginBottom: 4, lineHeight: 1.65 }}>{lines[i].replace(/^[-*] /, '')}</li>); i++; }
+      els.push(<ul key={`ul${i}`} style={{ paddingLeft: 20, margin: '0.4rem 0', color: 'rgba(240,240,245,0.8)', fontSize: 14, fontFamily: 'Inter,sans-serif' }}>{items}</ul>); continue;
+    }
+    els.push(<p key={i} style={{ margin: '0.2rem 0', fontSize: 14, lineHeight: 1.75, color: 'rgba(240,240,245,0.82)', fontFamily: 'Inter,sans-serif' }}>{l}</p>); i++;
+  }
+  return <div style={{ padding: '0.5rem 0' }}>{els}</div>;
+}
+
+// ── Speech Section Preview ────────────────────────────────────────────────────
+function SpeechSectionPreview({ section }) {
+  const PINK = '#F40085', GREEN = '#00A878', CYAN = '#3B82F6', ORANGE = '#E07000';
+  const YELLOW_BG = '#FFFDE7', GREEN_BG = '#E8F5EF', ORANGE_BG = '#FFF3E0', CYAN_BG = '#E8F0FE', PINK_BG = '#FDE8F3';
+
+  if (section.id === 'what_stands_out') {
+    const dp = section.data_points || [];
+    return (
+      <div style={{ background: YELLOW_BG, border: '1px solid #DDD', borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#444', textAlign: 'center', marginBottom: 8 }}>What Stands Out</div>
+        {dp[0] && (
+          <div style={{ background: PINK, borderRadius: 8, padding: '0.4rem 0.8rem', textAlign: 'center',
+            color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            {dp[0]} 🎯
+          </div>
+        )}
+        {dp.slice(1).map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: '#555', textAlign: 'center', marginTop: 4, fontStyle: 'italic' }}>{d}</div>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.id === 'ownership_status') {
+    return (
+      <div style={{ background: YELLOW_BG, border: '1px solid #DDD', borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#444', marginBottom: 6 }}>🥧 Ownership & Status</div>
+        {(section.data_points || []).map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: '#555', padding: '2px 0',
+            borderLeft: `3px solid ${i % 2 === 0 ? PINK : CYAN}`, paddingLeft: 6, marginBottom: 4 }}>{d}</div>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.id === 'nf_chart') {
+    return (
+      <div style={{ background: '#F8F8F8', border: '1px solid #DDD', borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#444', marginBottom: 6 }}>📊 Issues by Network Function</div>
+        {(section.data_points || []).slice(0, 4).map((d, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <div style={{ width: `${Math.max(20, 80 - i * 15)}%`, height: 14, borderRadius: 3,
+              background: [PINK, CYAN, GREEN, ORANGE][i % 4] }} />
+            <span style={{ fontSize: 9, color: '#555' }}>{d}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.id === 'achievements') {
+    return (
+      <div style={{ background: GREEN_BG, border: `1.5px solid ${GREEN}`, borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: GREEN, marginBottom: 6 }}>✅ Key Achievements</div>
+        {(section.data_points || []).map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: '#333', padding: '2px 0 2px 6px',
+            borderLeft: `2px solid ${GREEN}`, marginBottom: 4 }}>{d}</div>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.id === 'challenges') {
+    return (
+      <div style={{ background: ORANGE_BG, border: `1.5px solid ${ORANGE}`, borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: ORANGE, marginBottom: 6 }}>⚠️ Challenges</div>
+        {(section.data_points || []).map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: '#333', padding: '2px 0 2px 6px',
+            borderLeft: `2px solid ${ORANGE}`, marginBottom: 4 }}>{d}</div>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.id === 'next_steps') {
+    return (
+      <div style={{ background: CYAN_BG, border: `1.5px solid ${CYAN}`, borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: CYAN, marginBottom: 6 }}>🎯 Next Steps & Targets</div>
+        {(section.data_points || []).map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: '#333', padding: '2px 0 2px 6px',
+            borderLeft: `2px solid ${CYAN}`, marginBottom: 4 }}>{d}</div>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.id === 'call_to_action') {
+    return (
+      <div style={{ background: PINK_BG, border: `2px solid ${PINK}`, borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: PINK, marginBottom: 6 }}>📢 Call to Action</div>
+        {(section.data_points || []).map((d, i) => (
+          <div key={i} style={{ fontSize: 10, color: '#333', fontStyle: 'italic' }}>{d}</div>
+        ))}
+      </div>
+    );
+  }
+
+  // Generic fallback
+  return (
+    <div style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 10, padding: '0.8rem', minWidth: 200 }}>
+      {(section.data_points || []).map((d, i) => (
+        <div key={i} style={{ fontSize: 10, color: T.INK, padding: '2px 0' }}>• {d}</div>
+      ))}
+    </div>
+  );
+}
+
 function DateField({ value, onChange }) {
   const pickerRef = useRef(null);
   const display = value ? value.split('-').reverse().join('/') : null;
@@ -93,6 +223,76 @@ export default function QBRGenerator({ user, project, lang }) {
   const [exporting, setExporting]   = useState(false);
   const [result, setResult]     = useState(null);
   const [error, setError]       = useState('');
+
+  // Speech guide state
+  const [speechGuide, setSpeechGuide]             = useState('');
+  const [speechGuideSaving, setSpeechGuideSaving] = useState(false);
+  const [speechGuideSaved, setSpeechGuideSaved]   = useState(false);
+  const [speechGuideEditing, setSpeechGuideEditing] = useState(false);
+
+  // Speech generator state
+  const [speechFile, setSpeechFile]         = useState(null);
+  const [speechGenerating, setSpeechGenerating] = useState(false);
+  const [speechExporting, setSpeechExporting]   = useState(false);
+  const [speechResult, setSpeechResult]     = useState(null);
+  const [speechError, setSpeechError]       = useState('');
+  const speechFileRef = useRef(null);
+
+  // Load speech guide when project changes
+  useEffect(() => {
+    if (!project) return;
+    api(`/speech/guide?project_id=${project.id}`).then(r => setSpeechGuide(r.content || '')).catch(() => {});
+  }, [project?.id]);
+
+  const saveSpeechGuide = async () => {
+    if (!project) return;
+    setSpeechGuideSaving(true); setSpeechGuideSaved(false);
+    try {
+      const r = await api('/speech/guide', { method: 'PUT', body: { project_id: project.id, content: speechGuide } });
+      setSpeechGuide(r.content);
+      setSpeechGuideSaved(true);
+      setSpeechGuideEditing(false);
+      setTimeout(() => setSpeechGuideSaved(false), 3000);
+    } catch (e) { console.error(e); }
+    finally { setSpeechGuideSaving(false); }
+  };
+
+  const generateSpeech = async () => {
+    if (!speechFile || !project) return;
+    setSpeechGenerating(true); setSpeechError(''); setSpeechResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('pptx', speechFile);
+      formData.append('project_id', project.id);
+      const token = localStorage.getItem('rz_token');
+      const res = await fetch('http://localhost:3001/api/speech/generate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+      setSpeechResult(await res.json());
+    } catch (err) { setSpeechError(err.message); }
+    finally { setSpeechGenerating(false); }
+  };
+
+  const exportSpeechDocx = async () => {
+    if (!speechResult) return;
+    setSpeechExporting(true);
+    try {
+      const blob = await apiBlob('/speech/export-docx', {
+        method: 'POST',
+        body: { speech: speechResult, project_name: project.name }
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `QBR_Speech_${project.name}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) { setSpeechError('Error al exportar Word'); }
+    finally { setSpeechExporting(false); }
+  };
 
   const generate = async () => {
     if (!project || !dateFrom || !dateTo) return;
@@ -159,17 +359,19 @@ export default function QBRGenerator({ user, project, lang }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', borderBottom: `1px solid ${T.BORDER}` }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', borderBottom: `1px solid ${T.BORDER}`, flexWrap: 'wrap' }}>
         {[
-          ['generate',    lang === 'es' ? '📊 Generar QBR'     : '📊 Generate QBR'],
-          ['methodology', lang === 'es' ? '⚙️ Formato de QBRs' : '⚙️ QBR Format'],
+          ['generate',      '📊 Generar QBR'],
+          ['methodology',   '⚙️ Formato de QBRs'],
+          ['speech-guide',  '🎤 Guía para el Speech'],
+          ['speech-gen',    '🗣️ Generador de Speech'],
         ].map(([key, label]) => (
           <div key={key} onClick={() => setQbrTab(key)}
             style={{ padding: '0.6rem 1.2rem', fontSize: 14, cursor: 'pointer',
               fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600,
               color: qbrTab === key ? T.ACCENT : T.MUTED,
               borderBottom: qbrTab === key ? `2px solid ${T.ACCENT}` : '2px solid transparent',
-              marginBottom: -1, transition: 'all 0.15s' }}>
+              marginBottom: -1, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
             {label}
           </div>
         ))}
@@ -177,6 +379,185 @@ export default function QBRGenerator({ user, project, lang }) {
 
       {/* Metodología QBR tab */}
       {qbrTab === 'methodology' && <QBRConfig user={user} project={project} lang={lang} />}
+
+      {/* Guía para el Speech tab — mismo patrón que QBRConfig */}
+      {qbrTab === 'speech-guide' && (
+        <div className="fadeUp">
+          <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+            {/* Header bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: `1px solid ${T.BORDER}`, padding: '0.75rem 1.2rem', background: T.PANEL2 }}>
+              <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 15 }}>
+                🎤 Guía para el Speech de QBRs
+              </span>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {speechGuideSaved && (
+                  <span style={{ color: T.SUCCESS, fontSize: 13, fontFamily: "'Space Grotesk', sans-serif" }}>
+                    ✓ Guardado
+                  </span>
+                )}
+                {speechGuideEditing ? (
+                  <>
+                    <button onClick={() => setSpeechGuideEditing(false)}
+                      style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
+                        padding: '5px 14px', color: T.MUTED, fontSize: 12, cursor: 'pointer',
+                        fontFamily: "'Space Grotesk', sans-serif" }}>
+                      Cancelar
+                    </button>
+                    <button onClick={saveSpeechGuide} disabled={speechGuideSaving}
+                      style={{ background: T.ACCENT, border: 'none', borderRadius: 8,
+                        padding: '5px 16px', color: '#fff', fontSize: 12, fontWeight: 700,
+                        cursor: speechGuideSaving ? 'not-allowed' : 'pointer',
+                        opacity: speechGuideSaving ? 0.7 : 1,
+                        fontFamily: "'Space Grotesk', sans-serif" }}>
+                      {speechGuideSaving ? '✨ Formateando…' : 'Guardar'}
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setSpeechGuideEditing(true)}
+                    style={{ background: 'none', border: `1px solid ${T.BORDER}`, borderRadius: 8,
+                      padding: '5px 14px', color: T.MUTED, fontSize: 12, cursor: 'pointer',
+                      fontFamily: "'Space Grotesk', sans-serif" }}>
+                    ✏️ Editar
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* Content area */}
+            <div style={{ height: 'calc(100vh - 320px)', overflowY: 'auto',
+              padding: '1.2rem 1.5rem', boxSizing: 'border-box' }}>
+              {speechGuideEditing ? (
+                <textarea
+                  value={speechGuide}
+                  onChange={e => setSpeechGuide(e.target.value)}
+                  style={{ width: '100%', height: '100%', background: 'transparent', border: 'none',
+                    color: T.INK, fontSize: 14, fontFamily: 'Inter, sans-serif',
+                    resize: 'none', outline: 'none', lineHeight: 1.8, boxSizing: 'border-box' }}
+                  placeholder="Ej: Siempre hablar en primera persona como dueño del resultado. Evitar palabras como 'intenté', 'traté'. Usar expresiones como 'lideré', 'ejecuté', 'aseguré'..."
+                />
+              ) : speechGuide?.trim() ? (
+                <SpeechGuideMarkdown content={speechGuide} />
+              ) : (
+                <div style={{ color: T.MUTED, textAlign: 'center', padding: '3rem', fontSize: 14 }}>
+                  No hay guía configurada. Hacé clic en "Editar" para agregar instrucciones.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generador de Speech tab */}
+      {qbrTab === 'speech-gen' && (
+        <div className="fadeUp">
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: T.INK, marginBottom: 4 }}>
+              🗣️ Generador de Speech de QBRs
+            </h2>
+            <div style={{ color: T.MUTED, fontSize: 13 }}>
+              Subí el PPT del QBR y Claude generará el speech sección por sección.
+            </div>
+          </div>
+
+          {/* File upload */}
+          <div style={{ background: T.PANEL, border: `1px solid ${T.BORDER}`, borderRadius: 14, padding: '1.5rem', marginBottom: '1.5rem' }}>
+            <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, color: T.INK, fontSize: 15, marginBottom: '1rem' }}>
+              📎 Subir archivo PPTX
+            </h3>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input ref={speechFileRef} type="file" accept=".pptx" style={{ display: 'none' }}
+                onChange={e => { setSpeechFile(e.target.files[0]); setSpeechResult(null); setSpeechError(''); }} />
+              <button onClick={() => speechFileRef.current?.click()} className="btn-secondary"
+                style={{ background: T.PANEL2, border: `1px solid ${T.BORDER}`, borderRadius: 8,
+                  padding: '0.65rem 1.4rem', color: T.INK, fontFamily: "'Space Grotesk', sans-serif",
+                  fontWeight: 600, fontSize: 14 }}>
+                📁 Elegir archivo .pptx
+              </button>
+              {speechFile && (
+                <span style={{ color: T.SUCCESS, fontSize: 13 }}>✅ {speechFile.name}</span>
+              )}
+              <button onClick={generateSpeech} disabled={!speechFile || speechGenerating} className="btn-primary"
+                style={{ background: T.ACCENT, border: 'none', borderRadius: 8, padding: '0.65rem 1.8rem',
+                  color: '#fff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14,
+                  opacity: (!speechFile || speechGenerating) ? 0.6 : 1 }}>
+                {speechGenerating ? '⏳ Generando speech...' : '🎤 Generar Speech'}
+              </button>
+            </div>
+          </div>
+
+          {speechError && (
+            <div style={{ background: 'rgba(255,68,68,0.1)', border: `1px solid ${T.DANGER}`,
+              borderRadius: 8, padding: '0.8rem 1rem', color: T.DANGER, fontSize: 13, marginBottom: '1rem' }}>
+              {speechError}
+            </div>
+          )}
+
+          {speechGenerating && (
+            <div style={{ textAlign: 'center', padding: '3rem', color: T.MUTED }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>🎤</div>
+              <div style={{ fontSize: 15, color: T.INK }}>Analizando el PPT y generando el speech...</div>
+              <div style={{ fontSize: 13, marginTop: 6 }}>Esto puede tomar unos segundos</div>
+            </div>
+          )}
+
+          {speechResult && (
+            <div>
+              {/* Export button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, color: T.INK, fontSize: 18 }}>
+                  {speechResult.title}
+                </h2>
+                <button onClick={exportSpeechDocx} disabled={speechExporting} className="btn-accent-outline"
+                  style={{ background: T.PANEL, border: `1px solid ${T.ACCENT}`, borderRadius: 8,
+                    padding: '0.65rem 1.4rem', color: T.ACCENT, fontFamily: "'Space Grotesk', sans-serif",
+                    fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8,
+                    opacity: speechExporting ? 0.7 : 1 }}>
+                  {speechExporting ? '⏳ Exportando...' : '📄 Exportar a Word'}
+                </button>
+              </div>
+
+              {/* Speech sections */}
+              {speechResult.sections?.map((section, idx) => (
+                <div key={section.id} style={{ marginBottom: '1.5rem', background: T.PANEL,
+                  border: `1px solid ${T.BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
+
+                  {/* Section header */}
+                  <div style={{ background: T.PANEL2, borderBottom: `1px solid ${T.BORDER}`,
+                    padding: '0.8rem 1.2rem', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ background: T.ACCENT, color: '#fff', borderRadius: '50%',
+                      width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{idx + 1}</span>
+                    <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
+                      fontSize: 15, color: T.ACCENT }}>{section.title}</span>
+                  </div>
+
+                  <div style={{ padding: '1.2rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    {/* Visual preview */}
+                    <div style={{ flex: '0 0 auto', minWidth: 220 }}>
+                      <div style={{ fontSize: 11, color: T.MUTED, fontFamily: "'Space Grotesk', sans-serif",
+                        fontWeight: 600, marginBottom: 8, letterSpacing: 0.5 }}>PREVIEW</div>
+                      <SpeechSectionPreview section={section} />
+                    </div>
+
+                    {/* Speech text */}
+                    <div style={{ flex: 1, minWidth: 280 }}>
+                      <div style={{ fontSize: 11, color: T.MUTED, fontFamily: "'Space Grotesk', sans-serif",
+                        fontWeight: 600, marginBottom: 8, letterSpacing: 0.5 }}>📢 LO QUE VAS A DECIR</div>
+                      <div style={{ background: T.PANEL2, borderRadius: 10, padding: '1rem',
+                        border: `1px solid ${T.BORDER}` }}>
+                        {section.speech.split('\n').filter(p => p.trim()).map((p, i) => (
+                          <p key={i} style={{ fontSize: 13, color: T.INK, fontFamily: 'Inter, sans-serif',
+                            lineHeight: 1.7, marginBottom: 8 }}>{p}</p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Generar QBR tab */}
       {qbrTab === 'generate' && <>

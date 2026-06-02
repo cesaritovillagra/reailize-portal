@@ -163,7 +163,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     // Section 1: badge + headline
     // Section 2: sub-label + secondary_stat + footnote
     // Section 3: 2 pie charts
-    const WS_TEXT_H = 2.3;  // sections 1+2 with separators
+    const WS_TEXT_H = 2.6;  // sections 1+2 with separators (increased for long secondary_stat)
     const PIE_H     = 1.55;
     const WS_H      = WS_TEXT_H + 0.1 + PIE_H;
 
@@ -173,7 +173,7 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     slide.addText('What Stands Out',{x:LX+0.12,y:START_Y+0.07,w:LW-0.24,h:0.26,fontSize:11,bold:true,color:DARK,fontFace:'Calibri',align:'center'});
 
     // Badge + hardcoded 🎯 emoji — always fixed, never from AI
-    const BADGE_W=1.7, EMOJI_W=0.4, BADGE_EMOJI_GAP=0.06;
+    const BADGE_W=1.7, EMOJI_W=0.4, BADGE_EMOJI_GAP=0.02;
     const BADGE_TOTAL=BADGE_W+BADGE_EMOJI_GAP+EMOJI_W;
     const BADGE_X=LCX-BADGE_TOTAL/2;
     const BADGE_Y=START_Y+0.4;
@@ -194,14 +194,14 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
       slide.addText(ws.sub_label,{x:LCX-1.25,y:START_Y+1.46,w:2.5,h:0.24,fontSize:8.5,bold:true,color:WHITE,fontFace:'Calibri',align:'center',valign:'middle'});
     }
 
-    // Secondary stat (no JIRA IDs, full descriptive sentence)
-    if(ws.secondary_stat) slide.addText(ws.secondary_stat,{x:LX+0.15,y:START_Y+1.78,w:LW-0.3,h:0.32,fontSize:8,color:PINK,fontFace:'Calibri',align:'center',bold:true,italic:true,wrap:true});
+    // Secondary stat — increased height to avoid overflow (up to 4 lines)
+    if(ws.secondary_stat) slide.addText(ws.secondary_stat,{x:LX+0.15,y:START_Y+1.78,w:LW-0.3,h:0.52,fontSize:8,color:PINK,fontFace:'Calibri',align:'center',bold:true,italic:true,wrap:true});
 
-    // Footnote
-    if(ws.footnote) slide.addText(ws.footnote,{x:LX+0.15,y:START_Y+2.12,w:LW-0.3,h:0.16,fontSize:7.5,color:MUTED,fontFace:'Calibri',align:'center',italic:true});
+    // Footnote — moved down to clear secondary_stat
+    if(ws.footnote) slide.addText(ws.footnote,{x:LX+0.15,y:START_Y+2.34,w:LW-0.3,h:0.16,fontSize:7.5,color:MUTED,fontFace:'Calibri',align:'center',italic:true});
 
     // Separator line 2
-    slide.addShape(pptx.ShapeType.rect,{x:LX+0.2,y:START_Y+2.32,w:LW-0.4,h:0.008,fill:{color:'E0E0E0'},line:{color:'E0E0E0',pt:0}});
+    slide.addShape(pptx.ShapeType.rect,{x:LX+0.2,y:START_Y+2.54,w:LW-0.4,h:0.008,fill:{color:'E0E0E0'},line:{color:'E0E0E0',pt:0}});
 
     // ── Section 3: 2 pie charts ───────────────────────────────────────────────
     const PIE_Y = START_Y + WS_TEXT_H + 0.04;
@@ -215,6 +215,11 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         : `${name}: ${value} (${pct}%)`;    // 1 line for small slices
     };
 
+    // Manual titles above each pie (avoids label/title overlap)
+    slide.addText('TPM-led vs Tier 1-led',{x:LX, y:PIE_Y, w:pieW, h:0.2, fontSize:8, bold:true, color:DARK, fontFace:'Calibri', align:'center'});
+    slide.addText('Tickets by Status',{x:LX+pieW+0.1, y:PIE_Y, w:pieW, h:0.2, fontSize:8, bold:true, color:DARK, fontFace:'Calibri', align:'center'});
+    const PIE_CHART_Y = PIE_Y + 0.22; // chart starts below manual title
+
     const ownership=(charts?.byOwnership||[]).filter(d=>d.value>0);
     if(ownership.length>0){
       const ownerTotal=ownership.reduce((s,d)=>s+d.value,0);
@@ -226,13 +231,13 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         }),
         values:ownership.map(d=>d.value),
       }],{
-        x:LX, y:PIE_Y, w:pieW, h:PIE_H,
+        x:LX, y:PIE_CHART_Y, w:pieW, h:PIE_H-0.22,
         chartColors:[PINK,'7AD0E2'],
         showLegend:true, legendPos:'b', legendFontSize:7,
         showLabel:true, showValue:false, showPercent:false,
-        dataLabelPosition:'bestFit',
+        dataLabelPosition:'outEnd',
         dataLabelFontSize:7, dataLabelColor:DARK, dataLabelFontBold:true,
-        showTitle:true, title:'TPM-led vs Tier 1-led', titleFontSize:8, titleColor:DARK, titleBold:true,
+        showTitle:false,
       });
     }
 
@@ -245,13 +250,13 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
         labels:byStatus.map(d=>pieLabel(d.label, d.value, statusTotal)),
         values:byStatus.map(d=>d.value),
       }],{
-        x:LX+pieW+0.1, y:PIE_Y, w:pieW, h:PIE_H,
+        x:LX+pieW+0.1, y:PIE_CHART_Y, w:pieW, h:PIE_H-0.22,
         chartColors:[PINK,CYAN,GREEN,ORANGE,PURPLE,'14B8A6'],
         showLegend:true, legendPos:'b', legendFontSize:7,
         showLabel:true, showValue:false, showPercent:false,
-        dataLabelPosition:'bestFit',
+        dataLabelPosition:'outEnd',
         dataLabelFontSize:7, dataLabelColor:DARK, dataLabelFontBold:true,
-        showTitle:true, title:'Tickets by Status', titleFontSize:8, titleColor:DARK, titleBold:true,
+        showTitle:false,
       });
     }
 
@@ -360,15 +365,19 @@ router.post('/export-pptx', authMiddleware, async (req, res) => {
     const NS_H=addHangBox(NS_X,curY,W_NS,[{text:'🎯  Next Steps & Targets',options:{fontSize:13,bold:true,color:CYAN,fontFace:'Segoe UI Emoji'}}],CYAN,CYAN_BG,CYAN,nextSteps);
     curY+=NS_H+0.1;
 
-    // Call to Action (pink light, PINK border) — centered
-    const CTA_H=0.44;
-    const CTA_X=cx(W_CTA);
+    // Call to Action — hanging indent: icon col + text col
+    const CTA_ICON_W = 0.32; // 📢 icon column
+    const CTA_TEXT_W = W_CTA - BOX_PAD - CTA_ICON_W - BOX_PAD;
+    const CTA_H = BOX_PAD + TITLE_H + BOX_PAD;
+    const CTA_X = cx(W_CTA);
     slide.addShape(pptx.ShapeType.roundRect,{x:CTA_X,y:curY,w:W_CTA,h:CTA_H,fill:{color:PINK_LIGHT},line:{color:PINK,pt:2},rectRadius:0.07});
+    // Icon column
+    slide.addText('📢',{x:CTA_X+BOX_PAD,y:curY+BOX_PAD,w:CTA_ICON_W,h:TITLE_H,fontSize:12,fontFace:'Segoe UI Emoji',valign:'middle',align:'left'});
+    // Text column: "Call to Action: " label + text, wraps independently
     slide.addText([
-      {text:'📢  ',options:{fontSize:12,fontFace:'Segoe UI Emoji'}},
       {text:'Call to Action: ',options:{fontSize:10,bold:true,color:PINK,fontFace:'Calibri'}},
       {text:sd.call_to_action||'',options:{fontSize:9.5,color:DARK,fontFace:'Calibri'}},
-    ],{x:CTA_X+0.12,y:curY+0.06,w:W_CTA-0.24,h:CTA_H-0.1,fontFace:'Calibri',valign:'middle',wrap:true});
+    ],{x:CTA_X+BOX_PAD+CTA_ICON_W,y:curY+BOX_PAD,w:CTA_TEXT_W,h:TITLE_H,fontFace:'Calibri',valign:'middle',wrap:true});
 
     const buffer=await pptx.write({outputType:'nodebuffer'});
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.presentationml.presentation');

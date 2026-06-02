@@ -11,6 +11,7 @@ const filesRoutes    = require('./routes/files');
 const weeklyRoutes       = require('./routes/weekly');
 const ticketGuideRoutes  = require('./routes/ticketGuide');
 const weeklyGuideRoutes  = require('./routes/weeklyGuide');
+const speechRoutes       = require('./routes/speech');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ app.use('/api/files',    filesRoutes);
 app.use('/api/weekly',       weeklyRoutes);
 app.use('/api/ticket-guide',  ticketGuideRoutes);
 app.use('/api/weekly-guide', weeklyGuideRoutes);
+app.use('/api/speech',      speechRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
 
